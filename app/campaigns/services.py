@@ -3,11 +3,12 @@ import os
 import re
 import time
 import uuid
+from datetime import timedelta
 from types import SimpleNamespace
 
 from flask import current_app
 from markupsafe import escape
-from sqlalchemy import insert, update
+from sqlalchemy import insert, or_, update
 from sqlalchemy.orm import selectinload
 from werkzeug.utils import secure_filename
 
@@ -209,38 +210,128 @@ def dispatch_due_campaigns():
     return dispatched
 
 
-def process_campaign(campaign_id):
-    """Worker entry point: deliver every pending recipient in batches."""
-    campaign = db.session.get(Campaign, campaign_id)
-    if campaign is None or campaign.status not in (CampaignStatus.QUEUED, CampaignStatus.SENDING):
-        return
-    if not _claim(campaign, (CampaignStatus.QUEUED, CampaignStatus.SENDING), CampaignStatus.SENDING):
-        return
-    campaign.started_at = campaign.started_at or utcnow()
+# ---- worker lease -------------------------------------------------------------------
+# A campaign is processed by at most one worker at a time. The worker holding the lease
+# renews it as it goes; if it dies, the lease expires and another worker can resume.
+
+LEASE_SECONDS = 600
+INTERRUPTED_ERROR = "Sending was interrupted, so delivery is unknown. Use “Retry failed” to resend."
+
+
+def _acquire_lease(campaign_id, statuses, new_status=None):
+    """Take the campaign's worker lease. Returns a lease token, or None if another worker holds it."""
+    token = uuid.uuid4().hex
+    now = utcnow()
+    values = {"lease_owner": token, "lease_expires_at": now + timedelta(seconds=LEASE_SECONDS)}
+    if new_status:
+        values["status"] = new_status
+    result = db.session.execute(
+        update(Campaign)
+        .where(Campaign.id == campaign_id, Campaign.status.in_(statuses),
+               or_(Campaign.lease_expires_at.is_(None), Campaign.lease_expires_at < now))
+        .values(**values)
+        .execution_options(synchronize_session=False)
+    )
+    db.session.commit()
+    return token if result.rowcount == 1 else None
+
+
+def _renew_lease(campaign_id, token):
+    """Extend the lease (committed with the caller's next commit). False if the lease was lost."""
+    result = db.session.execute(
+        update(Campaign)
+        .where(Campaign.id == campaign_id, Campaign.lease_owner == token)
+        .values(lease_expires_at=utcnow() + timedelta(seconds=LEASE_SECONDS))
+        .execution_options(synchronize_session=False)
+    )
+    return result.rowcount == 1
+
+
+def _release_lease(campaign_id, token):
+    db.session.rollback()
+    db.session.execute(
+        update(Campaign)
+        .where(Campaign.id == campaign_id, Campaign.lease_owner == token)
+        .values(lease_owner=None, lease_expires_at=None)
+        .execution_options(synchronize_session=False)
+    )
     db.session.commit()
 
-    attachments = _attachments(campaign)
-    batch_size = current_app.config["CAMPAIGN_BATCH_SIZE"]
-    while True:
+
+def _recover_interrupted(campaign):
+    """Settle work left behind by a worker that died mid-send. Never re-sends automatically."""
+    now = utcnow()
+    in_flight = campaign.recipients.filter(
+        CampaignRecipient.status == CampaignRecipient.STATUS_PENDING, CampaignRecipient.message_id.isnot(None)
+    ).all()
+    for recipient in in_flight:
+        message = recipient.message
+        if message is not None and message.status in (MessageStatus.SENT, MessageStatus.DELIVERED,
+                                                      MessageStatus.READ):
+            recipient.status, recipient.error_message = CampaignRecipient.STATUS_PROCESSED, None
+        else:
+            recipient.status, recipient.error_message = CampaignRecipient.STATUS_FAILED, INTERRUPTED_ERROR
+        recipient.processed_at = now
+    stuck = Message.query.filter(
+        Message.campaign_id == campaign.id,
+        or_(Message.status == MessageStatus.SENDING,
+            (Message.status == MessageStatus.QUEUED) & (Message.retry_count == 0)),
+    ).all()
+    for message in stuck:
+        message.status, message.failed_at, message.error_message = MessageStatus.FAILED, now, INTERRUPTED_ERROR
+    if in_flight or stuck:
+        log.warning("Campaign %s: recovered %d interrupted recipients", campaign.id, len(in_flight))
+
+
+def _still_allowed(message):
+    """Consent is re-checked before every retry: the client may have opted out since the first attempt."""
+    client = message.conversation.client if message.conversation else None
+    cc = client.channel(message.channel) if client else None
+    return bool(client and client.status != ClientStatus.ARCHIVED and cc and cc.is_reachable
+                and cc.address == message.recipient)
+
+
+# ---- sending ------------------------------------------------------------------------
+
+def process_campaign(campaign_id):
+    """Worker entry point: deliver every pending recipient in batches."""
+    token = _acquire_lease(campaign_id, (CampaignStatus.QUEUED, CampaignStatus.SENDING), CampaignStatus.SENDING)
+    if token is None:
+        return  # cancelled, finished, or another worker is already sending it
+    try:
+        campaign = db.session.get(Campaign, campaign_id)
         db.session.refresh(campaign)
-        if campaign.status == CampaignStatus.CANCELLED:
-            return
-        batch = (
-            campaign.recipients.filter_by(status=CampaignRecipient.STATUS_PENDING)
-            .options(selectinload(CampaignRecipient.client).selectinload(Client.contact_channels))
-            .order_by(CampaignRecipient.id).limit(batch_size).all()
-        )
-        if not batch:
-            break
-        for recipient in batch:
-            _deliver(campaign, recipient, attachments)
+        campaign.started_at = campaign.started_at or utcnow()
+        _recover_interrupted(campaign)
         db.session.commit()
 
-    _retry_pass(campaign, attachments)
-    _finalize(campaign)
+        attachments = _attachments(campaign)
+        batch_size = current_app.config["CAMPAIGN_BATCH_SIZE"]
+        while True:
+            db.session.refresh(campaign)
+            if campaign.status == CampaignStatus.CANCELLED:
+                return
+            batch = (
+                campaign.recipients.filter(CampaignRecipient.status == CampaignRecipient.STATUS_PENDING,
+                                           CampaignRecipient.message_id.is_(None))
+                .options(selectinload(CampaignRecipient.client).selectinload(Client.contact_channels))
+                .order_by(CampaignRecipient.id).limit(batch_size).all()
+            )
+            if not batch:
+                break
+            for recipient in batch:
+                if not _deliver(campaign, recipient, attachments, token):
+                    log.warning("Campaign %s: lost the worker lease, stopping", campaign_id)
+                    return
+
+        if _retry_pass(campaign, attachments, token):
+            _finalize(campaign)
+    finally:
+        _release_lease(campaign_id, token)
 
 
-def _deliver(campaign, recipient, attachments):
+def _deliver(campaign, recipient, attachments, token):
+    """Send to one recipient. Returns False if this worker no longer holds the campaign lease."""
     client = recipient.client
     now = utcnow()
     cc = client.channel(campaign.channel) if client else None
@@ -249,7 +340,11 @@ def _deliver(campaign, recipient, attachments):
         recipient.status = CampaignRecipient.STATUS_SKIPPED
         recipient.error_message = "Opted out or archived before sending"
         recipient.processed_at = now
-        return
+        if not _renew_lease(campaign.id, token):
+            db.session.rollback()
+            return False
+        db.session.commit()
+        return True
 
     conversation = message_service.get_or_create_conversation(client, campaign.channel)
     message = Message(
@@ -267,33 +362,56 @@ def _deliver(campaign, recipient, attachments):
     db.session.add(message)
     db.session.flush()
     recipient.message_id = message.id
+    if not _renew_lease(campaign.id, token):
+        db.session.rollback()
+        return False
+    # Record the message before contacting the provider, so a crash mid-send is detected
+    # by _recover_interrupted instead of the client being messaged twice.
+    db.session.commit()
+
     message_service.send(message, attachments, _whatsapp_template(campaign, client))
     recipient.status = (
         CampaignRecipient.STATUS_FAILED if message.status == MessageStatus.FAILED else CampaignRecipient.STATUS_PROCESSED
     )
     recipient.error_message = message.error_message if message.status == MessageStatus.FAILED else None
-    recipient.processed_at = now
+    recipient.processed_at = utcnow()
+    db.session.commit()
+    return True
 
 
-def _retry_pass(campaign, attachments):
-    """Retry transient provider failures with exponential backoff."""
+def _resend(campaign, message, attachments):
+    """Retry one message if the client still consents. Returns False if it was not sent."""
+    if not _still_allowed(message):
+        message.status, message.failed_at = MessageStatus.FAILED, utcnow()
+        message.error_message = "Not retried: the client opted out, was archived or changed their contact details."
+        return False
+    message_service.send(message, attachments, _whatsapp_template(campaign, message.conversation.client))
+    return True
+
+
+def _retry_pass(campaign, attachments, token):
+    """Retry transient provider failures with exponential backoff. False if the lease was lost."""
     backoff = current_app.config.get("RETRY_BACKOFF_SECONDS", 5)
     for attempt in range(current_app.config["MESSAGE_MAX_RETRIES"]):
         waiting = Message.query.filter(
             Message.campaign_id == campaign.id, Message.status == MessageStatus.QUEUED, Message.retry_count > 0
         ).all()
         if not waiting:
-            return
+            break
         if backoff:
             time.sleep(min(backoff * (2 ** attempt), 120))
         for message in waiting:
-            message_service.send(message, attachments, _whatsapp_template(campaign, message.conversation.client))
-        db.session.commit()
+            if not _renew_lease(campaign.id, token):
+                db.session.rollback()
+                return False
+            _resend(campaign, message, attachments)
+            db.session.commit()
     # Anything still queued after the final attempt has failed for good.
     for message in Message.query.filter_by(campaign_id=campaign.id, status=MessageStatus.QUEUED).all():
         message.status = MessageStatus.FAILED
         message.failed_at = utcnow()
     db.session.commit()
+    return True
 
 
 def _finalize(campaign):
@@ -315,28 +433,42 @@ def _finalize(campaign):
 
 def retry_failed_messages(campaign_id):
     """Manually re-send messages that failed (e.g. after fixing provider credentials)."""
-    campaign = db.session.get(Campaign, campaign_id)
-    if campaign is None:
+    # The lease also stops a double-clicked "Retry failed" from sending everything twice.
+    token = _acquire_lease(campaign_id, (CampaignStatus.COMPLETED, CampaignStatus.FAILED))
+    if token is None:
         return 0
-    attachments = _attachments(campaign)
-    failed = Message.query.filter_by(campaign_id=campaign.id, status=MessageStatus.FAILED).all()
-    for message in failed:
-        message.status = MessageStatus.QUEUED
-        message.failed_at = None
-        message.retry_count = 0
-        message_service.send(message, attachments, _whatsapp_template(campaign, message.conversation.client))
-        recipient = campaign.recipients.filter_by(message_id=message.id).first()
-        if recipient is not None:
-            recipient.status = (
-                CampaignRecipient.STATUS_FAILED if message.status == MessageStatus.FAILED
-                else CampaignRecipient.STATUS_PROCESSED
-            )
-            recipient.error_message = message.error_message if message.status == MessageStatus.FAILED else None
-    db.session.commit()
-    _retry_pass(campaign, attachments)
-    if campaign.status in (CampaignStatus.FAILED, CampaignStatus.COMPLETED):
-        _finalize(campaign)
-    return len(failed)
+    try:
+        campaign = db.session.get(Campaign, campaign_id)
+        attachments = _attachments(campaign)
+        failed_ids = [m.id for m in Message.query.filter_by(campaign_id=campaign.id, status=MessageStatus.FAILED)]
+        retried = 0
+        for message_id in failed_ids:
+            message = db.session.get(Message, message_id)
+            if not _renew_lease(campaign.id, token):
+                db.session.rollback()
+                return retried
+            if not _still_allowed(message):
+                message.error_message = ("Not retried: the client opted out, was archived or changed their "
+                                         "contact details.")
+                db.session.commit()
+                continue
+            message.status, message.failed_at, message.retry_count = MessageStatus.QUEUED, None, 0
+            db.session.commit()
+            message_service.send(message, attachments, _whatsapp_template(campaign, message.conversation.client))
+            recipient = campaign.recipients.filter_by(message_id=message.id).first()
+            if recipient is not None:
+                recipient.status = (
+                    CampaignRecipient.STATUS_FAILED if message.status == MessageStatus.FAILED
+                    else CampaignRecipient.STATUS_PROCESSED
+                )
+                recipient.error_message = message.error_message if message.status == MessageStatus.FAILED else None
+            db.session.commit()
+            retried += 1
+        if _retry_pass(campaign, attachments, token):
+            _finalize(campaign)
+        return retried
+    finally:
+        _release_lease(campaign_id, token)
 
 
 def duplicate_campaign(campaign, user):

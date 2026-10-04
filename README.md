@@ -38,7 +38,7 @@ Requirements: Python 3.12, Node 20 (for building the Tailwind CSS), and PostgreS
 
 ```bash
 python -m venv .venv
-.venv/bin/pip install -r requirements.txt     # Windows: .venv\Scripts\pip install -r requirements.txt
+.venv/bin/pip install -r requirements-dev.txt     # Windows: .venv\Scripts\pip install -r requirements-dev.txt
 npm ci && npm run build:css                   # or: npm run watch:css while editing templates
 
 cp .env.example .env                          # then edit DATABASE_URL, SECRET_KEY, ...

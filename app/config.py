@@ -29,7 +29,7 @@ class Config:
     APP_NAME = "Allied Tours & Travel Agency"
     APP_TAGLINE = "Your one-stop travel shop."
 
-    SECRET_KEY = os.environ.get("SECRET_KEY", "dev-insecure-change-me")
+    SECRET_KEY = os.environ.get("SECRET_KEY") or "dev-insecure-change-me"
     SQLALCHEMY_DATABASE_URI = _database_url(
         os.environ.get("DATABASE_URL", "postgresql://allied:allied@localhost:5432/allied")
     )
@@ -47,9 +47,17 @@ class Config:
     SESSION_COOKIE_SECURE = _bool("SESSION_COOKIE_SECURE", False)
     REMEMBER_COOKIE_HTTPONLY = True
     REMEMBER_COOKIE_SECURE = _bool("SESSION_COOKIE_SECURE", False)
+    REMEMBER_COOKIE_SAMESITE = "Lax"
     REMEMBER_COOKIE_DURATION = timedelta(days=14)
+    # Sessions are permanent with a sliding expiry: 12 hours without activity signs the user out.
     PERMANENT_SESSION_LIFETIME = timedelta(hours=12)
     WTF_CSRF_TIME_LIMIT = None
+
+    # Two-factor authentication (authenticator app). Roles listed here must enrol before using the app.
+    MFA_REQUIRED_ROLES = tuple(
+        r.strip() for r in os.environ.get("MFA_REQUIRED_ROLES", "super_admin,administrator").split(",") if r.strip()
+    )
+    MFA_ISSUER = os.environ.get("MFA_ISSUER", "Allied Tours")
 
     # Uploads
     MAX_CONTENT_LENGTH = 10 * 1024 * 1024
@@ -119,6 +127,7 @@ class TestingConfig(Config):
     TASK_BACKEND = "sync"
     RETRY_BACKOFF_SECONDS = 0
     PASSWORD_HASH_METHOD = "pbkdf2:sha256:1000"  # fast hashing for tests only
+    MFA_REQUIRED_ROLES = ()
     MAIL_PROVIDER = "console"
     SMS_PROVIDER = "console"
     WHATSAPP_PROVIDER = "console"
@@ -131,6 +140,8 @@ class TestingConfig(Config):
 
 class ProductionConfig(Config):
     SESSION_COOKIE_SECURE = True
+    # The __Host- prefix makes browsers refuse the cookie unless it is Secure, host-only and Path=/.
+    SESSION_COOKIE_NAME = "__Host-session"
     REMEMBER_COOKIE_SECURE = True
     PREFERRED_URL_SCHEME = "https"
 

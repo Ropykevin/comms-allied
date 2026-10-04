@@ -77,7 +77,8 @@ def _apply_form(campaign, form, audience):
     campaign.description = (form.description.data or "").strip() or None
     campaign.channel = form.channel.data or None
     campaign.audience = audience
-    campaign.template_id = form.template_id.data or None
+    template_id = form.template_id.data or None
+    campaign.template_id = template_id if template_id and db.session.get(MessageTemplate, template_id) else None
     campaign.subject = (form.subject.data or "").strip() or None
     campaign.content = form.content.data or None
     campaign.is_html = bool(form.is_html.data) and campaign.channel == CHANNEL_EMAIL

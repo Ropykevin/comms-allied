@@ -12,3 +12,4 @@ class UserForm(FlaskForm):
     role_id = SelectField("Role", coerce=int, validators=[DataRequired()])
     is_active = BooleanField("Account is active", default=True)
     password = PasswordField("Password", validators=[Optional(), strong_password])
+    reset_mfa = BooleanField("Reset two-factor authentication (they will set it up again at next sign-in)")

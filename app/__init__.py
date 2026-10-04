@@ -13,8 +13,8 @@ def create_app(config_name=None):
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(config_by_name[config_name])
 
-    if config_name == "production" and app.config["SECRET_KEY"] == "dev-insecure-change-me":
-        raise RuntimeError("SECRET_KEY must be set in production.")
+    if config_name == "production":
+        _check_production_config(app)
 
     proxies = app.config["TRUSTED_PROXY_COUNT"]
     if proxies:
@@ -51,6 +51,22 @@ def create_app(config_name=None):
     return app
 
 
+INSECURE_SECRET_KEYS = {
+    "dev-insecure-change-me", "replace-with-a-long-random-string", "change-me", "changeme", "secret", "test-secret",
+}
+
+
+def _check_production_config(app):
+    key = app.config.get("SECRET_KEY") or ""
+    if key in INSECURE_SECRET_KEYS or len(key) < 32:
+        raise RuntimeError(
+            "SECRET_KEY must be a random value of at least 32 characters in production. Generate one with: "
+            "python -c \"import secrets; print(secrets.token_urlsafe(48))\""
+        )
+    if app.config.get("DEBUG"):
+        raise RuntimeError("DEBUG must be off in production.")
+
+
 def _configure_logging(app):
     level = getattr(logging, app.config.get("LOG_LEVEL", "INFO").upper(), logging.INFO)
     if not app.testing:
@@ -77,6 +93,9 @@ def _register_blueprints(app):
     # Providers authenticate webhooks with signatures/tokens, not browser CSRF tokens.
     csrf.exempt(webhooks_bp)
     limiter.limit("600/minute")(webhooks_bp)
+
+    from app.auth.routes import enforce_mfa_enrolment
+    app.before_request(enforce_mfa_enrolment)
 
 
 def _register_template_helpers(app):

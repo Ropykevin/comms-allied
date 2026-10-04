@@ -18,9 +18,12 @@ def celery_init_app(app):
         task_ignore_result=True,
         task_acks_late=True,
         worker_prefetch_multiplier=1,
+        # Long campaigns must not be redelivered to a second worker while still running.
+        broker_transport_options={"visibility_timeout": 12 * 3600},
         timezone="UTC",
         beat_schedule={
             "dispatch-due-campaigns": {"task": "allied.dispatch_due_campaigns", "schedule": 60.0},
+            "purge-old-data": {"task": "allied.purge_old_data", "schedule": 6 * 3600.0},
         },
     )
     celery.set_default()

@@ -36,11 +36,23 @@ def _dispatch_due_campaigns():
     return dispatch_due_campaigns()
 
 
+def _send_password_reset(user_id):
+    from app.auth.routes import send_password_reset
+    send_password_reset(user_id)
+
+
+def _purge_old_data():
+    from app.retention import purge_old_data
+    return purge_old_data()
+
+
 JOBS = {
     "send_campaign": _send_campaign,
     "retry_campaign_failures": _retry_campaign_failures,
     "send_message": _send_message,
     "dispatch_due_campaigns": _dispatch_due_campaigns,
+    "send_password_reset": _send_password_reset,
+    "purge_old_data": _purge_old_data,
 }
 
 

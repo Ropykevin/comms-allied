@@ -66,8 +66,12 @@ def seed_reference_data():
 
 
 def create_user(email, password, full_name, role_name):
+    from app.auth.forms import password_problem
     from app.models import Role, User
 
+    problem = password_problem(password)
+    if problem:
+        raise click.ClickException(f"Password rejected: {problem}")
     role = Role.query.filter_by(name=role_name).first()
     if role is None:
         raise click.ClickException(f"Unknown role {role_name}. Run `flask seed` first.")
@@ -94,7 +98,29 @@ def register_cli(app):
         if not password:
             password = click.prompt("Password for the super admin", hide_input=True, confirmation_prompt=True)
         create_user(email, password, "System Administrator", ROLE_SUPER_ADMIN)
-        click.echo(f"Created super admin {email}.")
+        click.echo(f"Created super admin {email}. Remove ADMIN_PASSWORD from .env now that it has been used.")
+
+    @app.cli.command("reset-mfa")
+    @click.option("--email", prompt=True)
+    def reset_mfa(email):
+        """Turn off two-factor for a user who lost their phone (they must set it up again)."""
+        from app import audit
+        from app.models import User
+
+        user = User.query.filter_by(email=email.strip().lower()).first()
+        if user is None:
+            raise click.ClickException(f"No user with email {email}.")
+        user.mfa_enabled, user.totp_secret, user.totp_last_step = False, None, None
+        user.revoke_sessions()
+        audit.record("user.mfa_reset_cli", "user", user.id, user=user)
+        db.session.commit()
+        click.echo(f"Two-factor reset for {user.email}. They will be asked to set it up at next sign-in.")
+
+    @app.cli.command("purge-data")
+    def purge_data():
+        """Delete expired import files and old webhook payloads (also runs automatically every 6 hours)."""
+        from app.retention import purge_old_data
+        click.echo(f"Purged: {purge_old_data()}")
 
     @app.cli.command("create-user")
     @click.option("--email", prompt=True)

@@ -1,4 +1,5 @@
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
+from flask_login import current_user
 
 from app import audit
 from app.extensions import db
@@ -71,6 +72,10 @@ def user_edit(user_id):
             changes = {}
             if user.role_id != form.role_id.data:
                 changes["role"] = [user.role.name, new_role.name]
+            if user.email != email:
+                changes["email"] = [user.email, email]
+            if user.is_active_user != form.is_active.data:
+                changes["active"] = form.is_active.data
             user.full_name = form.full_name.data.strip()
             user.email = email
             user.phone = form.phone.data or None
@@ -79,8 +84,17 @@ def user_edit(user_id):
             if form.password.data:
                 user.set_password(form.password.data)
                 changes["password_reset_by_admin"] = True
+            if form.reset_mfa.data and user.mfa_enabled:
+                user.mfa_enabled, user.totp_secret, user.totp_last_step = False, None, None
+                changes["mfa_reset_by_admin"] = True
+            if {"role", "email", "active", "mfa_reset_by_admin"} & changes.keys():
+                user.revoke_sessions()
             audit.record("user.updated", "user", user.id, changes)
             db.session.commit()
+            if user.id == current_user.id:
+                from app.auth.routes import _complete_login
+                _complete_login(user, remember=False)
+                db.session.commit()
             flash("User updated.", "success")
             return redirect(url_for("settings.users"))
     return render_template("settings/user_form.html", form=form, user=user)

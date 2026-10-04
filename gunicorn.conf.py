@@ -16,5 +16,7 @@ max_requests_jitter = 100
 worker_tmp_dir = "/dev/shm"
 
 accesslog = "-"
+# %(U)s is the path without the query string, so tokens and search terms are not logged.
+access_log_format = '%(h)s "%(m)s %(U)s %(H)s" %(s)s %(b)s %(L)ss'
 errorlog = "-"
 loglevel = os.environ.get("LOG_LEVEL", "info").lower()

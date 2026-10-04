@@ -44,6 +44,9 @@ class Campaign(db.Model):
     queued_at = db.Column(db.DateTime)
     started_at = db.Column(db.DateTime)
     completed_at = db.Column(db.DateTime)
+    # Worker lease: only the worker holding an unexpired lease may send for this campaign.
+    lease_owner = db.Column(db.String(36))
+    lease_expires_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow, index=True)
     updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 

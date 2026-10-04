@@ -11,9 +11,12 @@
     {{ field(form.phone) }}
     {{ field(form.role_id) }}
     <div class="sm:col-span-2">
-      {{ field(form.password, help=('Leave blank to keep the current password.' if user else 'At least 10 characters, mixing letters with numbers or symbols.'), autocomplete='new-password') }}
+      {{ field(form.password, help=('Leave blank to keep the current password.' if user else 'At least 12 characters, mixing letters with numbers or symbols.'), autocomplete='new-password') }}
     </div>
     <label class="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">{{ form.is_active(class_='form-checkbox') }} {{ form.is_active.label.text }}</label>
+    {% if user and user.mfa_enabled %}
+    <label class="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">{{ form.reset_mfa(class_='form-checkbox') }} {{ form.reset_mfa.label.text }}</label>
+    {% endif %}
   </div>
   <div class="flex justify-end gap-3 border-t border-slate-100 px-6 py-4">
     <a href="{{ url_for('settings.users') }}" class="btn-secondary">Cancel</a>

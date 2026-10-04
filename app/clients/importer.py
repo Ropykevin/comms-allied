@@ -15,6 +15,8 @@ from app.utils import normalize_email, normalize_phone
 
 MAX_ROWS = 20000
 TOKEN_RE = re.compile(r"^[a-f0-9]{32}$")
+FIELD_LIMITS = {"full_name": 150, "email": 255, "company": 150, "location": 120, "notes": 5000,
+                "categories": 500, "tags": 500}
 
 HEADER_ALIASES = {
     "full_name": {"name", "full name", "full_name", "client", "client name"},
@@ -111,6 +113,9 @@ def analyze(token):
         errors = []
         if not row["full_name"]:
             errors.append("Name is missing")
+        for field, limit in FIELD_LIMITS.items():
+            if len(row[field]) > limit:
+                errors.append(f"{field.replace('_', ' ').capitalize()} is longer than {limit} characters")
         phone = normalize_phone(row["phone"]) if row["phone"] else None
         if row["phone"] and not phone:
             errors.append(f"Invalid phone '{row['phone']}'")

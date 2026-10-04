@@ -1,4 +1,5 @@
 import pytest
+from flask import g
 
 from app import create_app
 from app.cli import create_user, seed_reference_data
@@ -12,7 +13,15 @@ PASSWORD = "Travel-Safe-2026"
 @pytest.fixture(scope="session")
 def _app():
     # One app per session so Jinja templates compile once; the database is reset per test.
-    return create_app("testing")
+    app = create_app("testing")
+
+    # Tests keep one app context open, so `g` outlives each request. Flask-Login caches the user
+    # in `g`; drop it so every request re-loads (and re-validates) the user like in production.
+    @app.teardown_request
+    def _forget_cached_user(exc):
+        g.pop("_login_user", None)
+
+    return app
 
 
 @pytest.fixture()

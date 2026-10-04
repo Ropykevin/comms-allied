@@ -1,0 +1,14 @@
+{% extends "auth/_layout.html" %}
+{% from "components/table.html" import field %}
+{% block title %}Two-factor verification{% endblock %}
+{% block auth_content %}
+<h1 class="text-2xl font-bold text-slate-900">Enter your code</h1>
+<p class="mt-1 text-sm text-slate-500">Open your authenticator app and enter the 6-digit code for Allied Tours.</p>
+<form method="post" class="mt-8 space-y-5" novalidate>
+  {{ form.hidden_tag() }}
+  {{ field(form.code, autocomplete='one-time-code', inputmode='numeric', autofocus=True, maxlength=8) }}
+  <button type="submit" class="btn-primary w-full py-2.5">Verify and sign in</button>
+</form>
+<p class="mt-6 text-center text-sm text-slate-500">Lost your phone? Ask a Super Admin to reset your two-factor authentication.</p>
+<p class="mt-2 text-center text-sm"><a href="{{ url_for('auth.login') }}" class="font-medium text-brand-700 hover:text-brand-900">Back to sign in</a></p>
+{% endblock %}

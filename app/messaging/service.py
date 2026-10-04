@@ -52,6 +52,11 @@ UNSUBSCRIBE_SALT = "email-unsubscribe"
 TRACKING_SALT = "email-open"
 
 
+def _clip(value, length):
+    """Inbound data comes from outside: never let an over-long value fail the database insert."""
+    return (value or "").strip()[:length] or None
+
+
 def _signer(salt):
     return URLSafeSerializer(current_app.config["SECRET_KEY"], salt=salt)
 
@@ -242,9 +247,9 @@ class MessageService:
             campaign_id=campaign_id,
             channel=inbound.channel,
             direction=DIRECTION_INBOUND,
-            sender=address or inbound.sender,
-            recipient=inbound.recipient,
-            subject=inbound.subject,
+            sender=_clip(address or inbound.sender, 255),
+            recipient=_clip(inbound.recipient, 255),
+            subject=_clip(inbound.subject, 255),
             content=inbound.content,
             provider_message_id=inbound.provider_message_id,
             status=MessageStatus.RECEIVED,
@@ -257,7 +262,7 @@ class MessageService:
         conversation.last_message_direction = DIRECTION_INBOUND
         conversation.unread_count = (conversation.unread_count or 0) + 1
         if inbound.subject and inbound.channel == CHANNEL_EMAIL:
-            conversation.subject = inbound.subject
+            conversation.subject = _clip(inbound.subject, 255)
         client.last_contacted_at = received_at
 
         if inbound.channel in (CHANNEL_SMS, CHANNEL_WHATSAPP) and self._is_opt_out(inbound.content):
@@ -283,7 +288,7 @@ class MessageService:
     @staticmethod
     def _create_prospect(inbound, address):
         client = Client(
-            full_name=inbound.sender_name or address or inbound.sender,
+            full_name=_clip(inbound.sender_name or address or inbound.sender, 150) or "Unknown sender",
             status=ClientStatus.PROSPECT,
             notes=f"Created automatically from an inbound {inbound.channel} message.",
         )

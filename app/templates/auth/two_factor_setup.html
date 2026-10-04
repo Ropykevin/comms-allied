@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "components/table.html" import page_header, field %}
+{% block title %}Set up two-factor authentication{% endblock %}
+{% block content %}
+{{ page_header('Two-factor authentication', 'Protect your account with a code from your phone each time you sign in.') }}
+<div class="card max-w-2xl">
+  <div class="card-body space-y-6">
+    <ol class="list-inside list-decimal space-y-2 text-sm text-slate-700">
+      <li>Install an authenticator app such as Google Authenticator, Microsoft Authenticator or Authy.</li>
+      <li>Scan this QR code with the app (or type the key below).</li>
+      <li>Enter the 6-digit code the app shows to finish.</li>
+    </ol>
+    <div class="flex flex-col items-center gap-3 sm:flex-row sm:items-start sm:gap-6">
+      <img src="{{ qr }}" alt="QR code for your authenticator app" class="h-48 w-48 rounded-xl border border-slate-200 bg-white p-2">
+      <div class="text-sm">
+        <p class="form-label">Setup key</p>
+        <p class="break-all rounded-lg bg-slate-50 px-3 py-2 font-mono text-slate-800">{{ secret }}</p>
+        <p class="form-help">Keep this private. Anyone with this key can generate your codes.</p>
+      </div>
+    </div>
+    <form method="post" class="space-y-5" novalidate>
+      {{ form.hidden_tag() }}
+      {{ field(form.code, autocomplete='one-time-code', inputmode='numeric', autofocus=True, maxlength=8) }}
+      <div class="flex justify-end gap-3">
+        {% if not current_user.mfa_required %}<a href="{{ url_for('auth.profile') }}" class="btn-secondary">Cancel</a>{% endif %}
+        <button class="btn-primary">Turn on two-factor</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

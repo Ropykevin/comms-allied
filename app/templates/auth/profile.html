@@ -27,10 +27,31 @@
     <form method="post" action="{{ url_for('auth.change_password') }}" class="card-body space-y-5">
       {{ password_form.hidden_tag() }}
       {{ field(password_form.current_password, autocomplete='current-password') }}
-      {{ field(password_form.password, autocomplete='new-password', help='At least 10 characters, mixing letters with numbers or symbols.') }}
+      {{ field(password_form.password, autocomplete='new-password', help='At least 12 characters, mixing letters with numbers or symbols.') }}
       {{ field(password_form.confirm, autocomplete='new-password') }}
       <button class="btn-primary">Update password</button>
     </form>
+  </div>
+  <div class="card lg:col-span-2">
+    <div class="card-header"><h2 class="card-title">Two-factor authentication</h2></div>
+    <div class="card-body space-y-4">
+      {% if current_user.mfa_enabled %}
+        <p class="text-sm text-slate-700"><span class="font-semibold text-emerald-700">On.</span> You enter a code from your authenticator app each time you sign in.</p>
+        {% if current_user.mfa_required %}
+          <p class="form-help">Your role requires two-factor authentication, so it can't be turned off. A Super Admin can reset it if you change phones.</p>
+        {% else %}
+          <form method="post" action="{{ url_for('auth.two_factor_disable') }}" class="grid gap-4 sm:grid-cols-3 sm:items-end">
+            {{ disable_form.hidden_tag() }}
+            {{ field(disable_form.password, autocomplete='current-password') }}
+            {{ field(disable_form.code, autocomplete='one-time-code', inputmode='numeric', maxlength=8) }}
+            <button class="btn-secondary">Turn off</button>
+          </form>
+        {% endif %}
+      {% else %}
+        <p class="text-sm text-slate-700"><span class="font-semibold text-rose-700">Off.</span> Add a second step to sign-in so a stolen password isn't enough to get into your account.</p>
+        <a href="{{ url_for('auth.two_factor_setup') }}" class="btn-primary">Set up two-factor</a>
+      {% endif %}
+    </div>
   </div>
 </div>
 {% endblock %}

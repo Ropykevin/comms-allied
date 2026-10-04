@@ -2,6 +2,7 @@ import json
 import logging
 import mimetypes
 import smtplib
+import ssl
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -150,18 +151,27 @@ class SMTPEmailProvider(EmailProvider):
     def send_email(self, email):
         if not self.config.get("MAIL_SERVER"):
             return SendResult(success=False, status="failed", error="MAIL_SERVER is not configured")
+        use_ssl, use_tls = bool(self.config.get("MAIL_USE_SSL")), bool(self.config.get("MAIL_USE_TLS"))
+        if self.config.get("MAIL_USERNAME") and not (use_ssl or use_tls):
+            return SendResult(success=False, status="failed",
+                              error="Refusing to send SMTP credentials without TLS (set MAIL_USE_TLS or MAIL_USE_SSL)")
         message_id = make_msgid(domain=self._domain())
         msg = self._build_message(email, message_id)
+        context = ssl.create_default_context()  # verifies the certificate and hostname
         try:
-            smtp_cls = smtplib.SMTP_SSL if self.config.get("MAIL_USE_SSL") else smtplib.SMTP
-            with smtp_cls(self.config["MAIL_SERVER"], self.config["MAIL_PORT"], timeout=20) as smtp:
-                if self.config.get("MAIL_USE_TLS") and not self.config.get("MAIL_USE_SSL"):
-                    smtp.starttls()
+            server, port = self.config["MAIL_SERVER"], self.config["MAIL_PORT"]
+            smtp = (smtplib.SMTP_SSL(server, port, timeout=20, context=context) if use_ssl
+                    else smtplib.SMTP(server, port, timeout=20))
+            with smtp:
+                if use_tls and not use_ssl:
+                    smtp.starttls(context=context)
                 if self.config.get("MAIL_USERNAME"):
                     smtp.login(self.config["MAIL_USERNAME"], self.config["MAIL_PASSWORD"])
                 refused = smtp.send_message(msg)
         except smtplib.SMTPRecipientsRefused as exc:
             return SendResult(success=False, status="failed", error=f"Recipient refused: {exc.recipients}")
+        except ssl.SSLError as exc:
+            return SendResult(success=False, status="failed", error=f"SMTP TLS error (certificate not trusted?): {exc}")
         except (smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError, TimeoutError, OSError) as exc:
             return SendResult(success=False, status="failed", error=f"SMTP connection error: {exc}", retryable=True)
         except smtplib.SMTPException as exc:
