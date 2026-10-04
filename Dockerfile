@@ -29,7 +29,7 @@ COPY --from=assets /build/app/static/css/app.css app/static/css/app.css
 RUN mkdir -p instance/uploads && chown -R allied:allied instance
 
 USER allied
-EXPOSE 8000
+EXPOSE 12005
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4)"
 CMD ["gunicorn", "-c", "gunicorn.conf.py", "wsgi:app"]
