@@ -1,7 +1,9 @@
 services:
-
   app:
-    image: ${DOCKER_IMAGE}
+    build:
+      context: .
+      dockerfile: Dockerfile
+
     container_name: allied-comms-app
     restart: unless-stopped
 
