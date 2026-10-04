@@ -1,0 +1,43 @@
+{% set BADGE_STYLES = {
+  'green': 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
+  'blue': 'bg-brand-50 text-brand-700 ring-brand-600/20',
+  'amber': 'bg-amber-50 text-amber-700 ring-amber-600/20',
+  'red': 'bg-rose-50 text-rose-700 ring-rose-600/20',
+  'gray': 'bg-slate-100 text-slate-600 ring-slate-500/20',
+  'violet': 'bg-violet-50 text-violet-700 ring-violet-600/20',
+  'sky': 'bg-sky-50 text-sky-700 ring-sky-600/20',
+} %}
+
+{% set STATUS_COLORS = {
+  'active': 'green', 'inactive': 'gray', 'prospect': 'violet', 'archived': 'gray',
+  'draft': 'gray', 'scheduled': 'sky', 'queued': 'amber', 'sending': 'amber', 'completed': 'green', 'failed': 'red', 'cancelled': 'gray',
+  'sent': 'blue', 'delivered': 'green', 'read': 'violet', 'received': 'sky',
+  'open': 'amber', 'pending': 'sky', 'resolved': 'green', 'closed': 'gray',
+  'allowed': 'green', 'opted_out': 'red', 'processed': 'green', 'ignored': 'gray',
+} %}
+
+{% macro badge(text, color='gray') -%}
+<span class="badge {{ BADGE_STYLES.get(color, BADGE_STYLES['gray']) }}">{{ text }}</span>
+{%- endmacro %}
+
+{% macro status_badge(status, label=None) -%}
+{% set color = STATUS_COLORS.get(status, 'gray') %}
+<span class="badge {{ BADGE_STYLES[color] }}">
+  {% if status in ['sending', 'queued'] %}<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-current"></span>{% endif %}
+  {{ label or (status or '')|replace('_', ' ')|title }}
+</span>
+{%- endmacro %}
+
+{% macro category_chip(category) -%}
+<span class="badge bg-{{ category.color }}-50 text-{{ category.color }}-700 ring-{{ category.color }}-600/20">{{ category.name }}</span>
+{%- endmacro %}
+
+{% macro tag_chip(tag) -%}
+<span class="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">#{{ tag.name }}</span>
+{%- endmacro %}
+
+{% macro channel_badge(channel) -%}
+{% from "components/icons.html" import channel_icon %}
+{% set styles = {'sms': 'bg-sky-50 text-sky-700 ring-sky-600/20', 'whatsapp': 'bg-emerald-50 text-emerald-700 ring-emerald-600/20', 'email': 'bg-amber-50 text-amber-700 ring-amber-600/20'} %}
+<span class="badge {{ styles.get(channel, BADGE_STYLES['gray']) }}">{{ channel_icon(channel, 'h-3.5 w-3.5') }} {{ channel|channel_label }}</span>
+{%- endmacro %}

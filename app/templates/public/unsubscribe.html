@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Email preferences{% endblock %}
+{% macro body() %}
+<div class="flex min-h-screen items-center justify-center px-4">
+  <div class="card w-full max-w-md p-8 text-center">
+    <img src="{{ url_for('static', filename='images/logo-mark.svg') }}" alt="" class="mx-auto h-14 w-14">
+    <p class="mt-4 font-bold text-brand-900">Allied Tours &amp; Travel Agency</p>
+    {% if done %}
+      <h1 class="mt-6 text-xl font-semibold text-slate-900">You've been unsubscribed</h1>
+      <p class="mt-2 text-sm text-slate-500">You will no longer receive marketing emails from us. We'll still be here whenever you're ready for your next trip.</p>
+    {% else %}
+      <h1 class="mt-6 text-xl font-semibold text-slate-900">Unsubscribe from emails?</h1>
+      <p class="mt-2 text-sm text-slate-500">Hello {{ client.first_name }}, confirm below and we'll stop sending you marketing emails.</p>
+      <form method="post" class="mt-6">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn-primary w-full">Unsubscribe me</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
+{% block public_content %}{{ body() }}{% endblock %}
+{% block content %}{{ body() }}{% endblock %}

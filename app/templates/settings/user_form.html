@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "components/table.html" import page_header, field %}
+{% block title %}{{ 'Edit' if user else 'Add' }} team member{% endblock %}
+{% block content %}
+{{ page_header(('Edit ' ~ user.full_name) if user else 'Add team member', 'Assign the role that matches what this person needs to do.') }}
+<form method="post" class="card max-w-2xl">
+  {{ form.hidden_tag() }}
+  <div class="card-body grid gap-5 sm:grid-cols-2">
+    {{ field(form.full_name) }}
+    {{ field(form.email) }}
+    {{ field(form.phone) }}
+    {{ field(form.role_id) }}
+    <div class="sm:col-span-2">
+      {{ field(form.password, help=('Leave blank to keep the current password.' if user else 'At least 10 characters, mixing letters with numbers or symbols.'), autocomplete='new-password') }}
+    </div>
+    <label class="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">{{ form.is_active(class_='form-checkbox') }} {{ form.is_active.label.text }}</label>
+  </div>
+  <div class="flex justify-end gap-3 border-t border-slate-100 px-6 py-4">
+    <a href="{{ url_for('settings.users') }}" class="btn-secondary">Cancel</a>
+    <button class="btn-primary">Save</button>
+  </div>
+</form>
+{% endblock %}

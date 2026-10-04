@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "components/icons.html" import icon %}
+{% block title %}Inbox{% endblock %}
+{% block content %}
+<div class="mb-6">
+  <h1 class="page-title">Inbox</h1>
+  <p class="page-subtitle">Every SMS, WhatsApp and Email reply in one place. Each channel keeps its own thread.</p>
+</div>
+<div class="grid gap-6 lg:grid-cols-[22rem_1fr]" style="min-height: 70vh">
+  {% include "conversations/_list.html" %}
+  <div class="card hidden items-center justify-center p-10 text-center lg:flex">
+    <div>
+      <span class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-brand-50 text-brand-600">{{ icon('chat', 'h-8 w-8') }}</span>
+      <p class="mt-4 font-semibold text-slate-900">Select a conversation</p>
+      <p class="mt-1 text-sm text-slate-500">Open a conversation to read the thread, reply, assign it or add an internal note.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

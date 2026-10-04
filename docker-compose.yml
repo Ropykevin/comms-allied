@@ -1,0 +1,115 @@
+# Production stack: Nginx -> Gunicorn (Flask) + Celery worker/beat, PostgreSQL, Redis.
+#   cp .env.example .env   # then fill in real values (never commit .env)
+#   docker compose up -d --build
+#   docker compose exec web flask seed
+
+x-app: &app
+  build:
+    context: .
+    target: app
+  image: allied-chat:latest
+  env_file: .env
+  environment:
+    APP_ENV: production
+    TASK_BACKEND: celery
+    DATABASE_URL: postgresql://${POSTGRES_USER:-allied}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-allied}
+    REDIS_URL: redis://redis:6379/0
+    RATELIMIT_STORAGE_URI: redis://redis:6379/1
+    TRUSTED_PROXY_COUNT: "1"
+    SESSION_COOKIE_SECURE: "true"
+  volumes:
+    - uploads:/app/instance/uploads
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-allied}
+      POSTGRES_USER: ${POSTGRES_USER:-allied}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    command: ["flask", "db", "upgrade"]
+    healthcheck:
+      disable: true
+    restart: "no"
+
+  web:
+    <<: *app
+    command: ["gunicorn", "-c", "gunicorn.conf.py", "wsgi:app"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  worker:
+    <<: *app
+    command: ["celery", "-A", "celery_worker.celery", "worker", "--loglevel=info", "--concurrency=4"]
+    healthcheck:
+      disable: true
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  beat:
+    <<: *app
+    command: ["celery", "-A", "celery_worker.celery", "beat", "--loglevel=info",
+              "--schedule", "/tmp/celerybeat-schedule"]
+    healthcheck:
+      disable: true
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  nginx:
+    build:
+      context: .
+      target: nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/certs:/etc/nginx/certs:ro
+      - certbot-webroot:/var/www/certbot
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  uploads:
+  certbot-webroot:

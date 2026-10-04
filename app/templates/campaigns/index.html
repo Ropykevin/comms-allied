@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "components/table.html" import page_header, data_table %}
+{% from "components/badge.html" import status_badge, channel_badge %}
+{% from "components/pagination.html" import pagination %}
+{% from "components/icons.html" import icon %}
+{% block title %}Campaigns{% endblock %}
+{% block content %}
+{% call page_header('Campaigns', 'Reach a whole client category in a few clicks.') %}
+  {% if current_user.can(P.CAMPAIGNS_MANAGE) %}<a href="{{ url_for('campaigns.create') }}" class="btn-accent">{{ icon('plus', 'h-4 w-4') }} Create campaign</a>{% endif %}
+{% endcall %}
+
+<div class="card">
+  <form method="get" class="flex flex-wrap gap-3 border-b border-slate-100 p-4">
+    <select name="status" class="form-input w-auto" data-autosubmit aria-label="Status">
+      <option value="">All statuses</option>
+      {% for s in statuses.ALL %}<option value="{{ s }}" {{ 'selected' if status == s }}>{{ statuses.LABELS[s] }}</option>{% endfor %}
+    </select>
+    <select name="channel" class="form-input w-auto" data-autosubmit aria-label="Channel">
+      <option value="">All channels</option>
+      {% for ch in ['sms', 'whatsapp', 'email'] %}<option value="{{ ch }}" {{ 'selected' if channel == ch }}>{{ ch|channel_label }}</option>{% endfor %}
+    </select>
+  </form>
+  {% call data_table(['Campaign', 'Audience', 'Channel', 'Recipients', 'Status', 'Date'], empty=not campaigns.items, empty_title='No campaigns yet', empty_text='Create a campaign, pick a category and the system calculates who receives it.') %}
+    {% for c in campaigns.items %}
+    <tr>
+      <td>
+        <a href="{{ url_for('campaigns.detail', campaign_id=c.id) }}" class="font-medium text-slate-900 hover:text-brand-700">{{ c.name }}</a>
+        {% if c.created_by %}<p class="text-xs text-slate-500">by {{ c.created_by.full_name }}</p>{% endif %}
+      </td>
+      <td class="text-slate-600">
+        {% set ids = (c.audience or {}).get('category_ids', []) %}
+        {% if ids %}{% set names = [] %}{% for i in ids %}{% if i in category_names %}{% set _ = names.append(category_names[i]) %}{% endif %}{% endfor %}{{ names|join(', ')|truncate_text(40) }}{% else %}All clients{% endif %}
+      </td>
+      <td>{% if c.channel %}{{ channel_badge(c.channel) }}{% else %}<span class="text-slate-400">—</span>{% endif %}</td>
+      <td>{{ c.total_recipients|number if c.total_recipients else '—' }}</td>
+      <td>{{ status_badge(c.status) }}</td>
+      <td class="text-slate-500">
+        {% if c.status == 'scheduled' %}{{ icon('clock', 'inline h-3.5 w-3.5') }} {{ c.scheduled_at|localtime }}
+        {% else %}{{ c.sent_or_scheduled_at|localtime('%d %b %Y') }}{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  {% endcall %}
+  {{ pagination(campaigns, 'campaigns.index', {'status': status, 'channel': channel}) }}
+</div>
+{% endblock %}

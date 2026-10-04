@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ subject or 'Allied Tours & Travel' }}</title></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;">
+        <tr><td style="background:linear-gradient(135deg,#174a72,#0f2a42);background-color:#163f5f;padding:28px 32px;">
+          <p style="margin:0;font-size:20px;font-weight:700;color:#ffffff;">Allied Tours &amp; Travel Agency</p>
+          <p style="margin:4px 0 0;font-size:13px;color:#fcb84d;">Your one-stop travel shop.</p>
+        </td></tr>
+        <tr><td style="padding:32px;font-size:15px;line-height:1.65;">
+          {% block body %}{% endblock %}
+        </td></tr>
+        <tr><td style="padding:20px 32px;background:#f8fafc;font-size:12px;color:#64748b;">
+          {% block footer %}Allied Tours &amp; Travel Agency · Your one-stop travel shop.{% endblock %}
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+  {% block tracking %}{% endblock %}
+</body>
+</html>

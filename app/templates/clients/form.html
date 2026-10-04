@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "components/table.html" import page_header, field %}
+{% from "components/icons.html" import channel_icon %}
+{% block title %}{{ 'Edit client' if client else 'Add client' }}{% endblock %}
+{% block content %}
+{{ page_header(('Edit ' ~ client.full_name) if client else 'Add a client', 'Contact details, categories and communication preferences.') }}
+<form method="post" class="grid gap-6 xl:grid-cols-3" novalidate>
+  {{ form.hidden_tag() }}
+  <div class="space-y-6 xl:col-span-2">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Contact information</h2></div>
+      <div class="card-body grid gap-5 sm:grid-cols-2">
+        <div class="sm:col-span-2">{{ field(form.full_name, placeholder='e.g. John Kamau') }}</div>
+        {{ field(form.phone, placeholder='+254712345678') }}
+        {{ field(form.whatsapp, placeholder='Leave blank to use the phone number', help='Only if different from the phone number.') }}
+        {{ field(form.email, placeholder='john@example.com') }}
+        {{ field(form.company) }}
+        {{ field(form.location, placeholder='Nairobi') }}
+        {{ field(form.status) }}
+        <div class="sm:col-span-2">{{ field(form.notes, rows=4) }}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Categories</h2><p class="text-xs text-slate-500">A client can belong to many categories.</p></div>
+      <div class="card-body grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {% for value, label in form.categories.choices %}
+        <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm hover:border-brand-300 hover:bg-brand-50/50 has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">
+          <input type="checkbox" name="categories" value="{{ value }}" class="form-checkbox" {{ 'checked' if form.categories.data and value in form.categories.data }}>
+          {{ label }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Tags</h2></div>
+      <div class="card-body space-y-4">
+        <div class="flex flex-wrap gap-2">
+          {% for value, label in form.tags.choices %}
+          <label class="cursor-pointer">
+            <input type="checkbox" name="tags" value="{{ value }}" class="peer sr-only" {{ 'checked' if form.tags.data and value in form.tags.data }}>
+            <span class="inline-flex items-center rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 transition peer-checked:border-brand-600 peer-checked:bg-brand-600 peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500">#{{ label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+        {{ field(form.new_tags, placeholder='Add new tags, separated by commas') }}
+      </div>
+    </div>
+  </div>
+
+  <div class="space-y-6">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Communication preferences</h2></div>
+      <div class="card-body space-y-3">
+        <p class="text-xs text-slate-500">Campaigns automatically skip any channel the client has opted out of.</p>
+        {% for ch, f in [('sms', form.sms_allowed), ('whatsapp', form.whatsapp_allowed), ('email', form.email_allowed)] %}
+        <label class="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3">
+          <span class="flex items-center gap-3 text-sm font-medium text-slate-700">{{ channel_icon(ch, 'h-5 w-5 text-brand-600') }} {{ ch|channel_label }}</span>
+          <span class="flex items-center gap-2 text-xs text-slate-500">{{ f(class_='form-checkbox') }} Allowed</span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="flex gap-3">
+      <a href="{{ url_for('clients.detail', client_id=client.id) if client else url_for('clients.index') }}" class="btn-secondary flex-1">Cancel</a>
+      <button class="btn-primary flex-1">{{ 'Save changes' if client else 'Add client' }}</button>
+    </div>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "components/table.html" import page_header, field %}
+{% block title %}Edit category{% endblock %}
+{% block content %}
+{{ page_header('Edit “' ~ category.name ~ '”', count|string ~ ' client(s) in this category') }}
+<div class="grid max-w-3xl gap-6">
+  <form method="post" class="card">
+    {{ form.hidden_tag() }}
+    <div class="card-body grid gap-5 sm:grid-cols-2">
+      <div class="sm:col-span-2">{{ field(form.name) }}</div>
+      <div class="sm:col-span-2">{{ field(form.description) }}</div>
+      {{ field(form.color) }}
+      <label class="flex items-center gap-2 self-end pb-2 text-sm text-slate-700">{{ form.is_featured(class_='form-checkbox') }} {{ form.is_featured.label.text }}</label>
+    </div>
+    <div class="flex justify-end gap-3 border-t border-slate-100 px-6 py-4">
+      <a href="{{ url_for('categories.index') }}" class="btn-secondary">Cancel</a>
+      <button class="btn-primary">Save</button>
+    </div>
+  </form>
+  <form method="post" action="{{ url_for('categories.delete', category_id=category.id) }}" class="card flex items-center justify-between gap-4 p-6" data-confirm="Delete the category “{{ category.name }}”? Clients stay, they're just removed from this category.">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div>
+      <p class="font-semibold text-slate-900">Delete category</p>
+      <p class="text-sm text-slate-500">Clients are not deleted — they're simply removed from this category.</p>
+    </div>
+    <button class="btn-danger">Delete</button>
+  </form>
+</div>
+{% endblock %}

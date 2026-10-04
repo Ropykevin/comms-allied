@@ -1,0 +1,45 @@
+{# Table shell: {% call data_table(['Name', 'Status']) %}<tr>…</tr>{% endcall %} #}
+{% macro data_table(headers, empty=False, empty_title='Nothing here yet', empty_text='') -%}
+<div class="overflow-x-auto">
+  <table class="table-base">
+    <thead>
+      <tr>
+        {% for h in headers %}<th scope="col" class="{{ 'text-right' if h == 'Actions' }}">{{ h }}</th>{% endfor %}
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-100">
+      {{ caller() }}
+    </tbody>
+  </table>
+  {% if empty %}
+    {{ empty_state(empty_title, empty_text) }}
+  {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro empty_state(title, text='') -%}
+<div class="flex flex-col items-center justify-center px-6 py-14 text-center">
+  <img src="{{ url_for('static', filename='images/logo-mark.svg') }}" alt="" class="h-12 w-12 opacity-30 grayscale">
+  <p class="mt-4 text-sm font-semibold text-slate-700">{{ title }}</p>
+  {% if text %}<p class="mt-1 max-w-sm text-sm text-slate-500">{{ text }}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro page_header(title, subtitle=None) -%}
+<div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+  <div>
+    <h1 class="page-title">{{ title }}</h1>
+    {% if subtitle %}<p class="page-subtitle">{{ subtitle }}</p>{% endif %}
+  </div>
+  {% if caller %}<div class="flex flex-wrap items-center gap-2">{{ caller() }}</div>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro field(f, help=None, cls='form-input') -%}
+<div>
+  {{ f.label(class_='form-label') }}
+  {{ f(class_=cls, **kwargs) }}
+  {% if help %}<p class="form-help">{{ help }}</p>{% endif %}
+  {% for error in f.errors %}<p class="form-error">{{ error }}</p>{% endfor %}
+</div>
+{%- endmacro %}

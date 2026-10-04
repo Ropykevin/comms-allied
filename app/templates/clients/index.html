@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% from "components/table.html" import page_header, data_table %}
+{% from "components/badge.html" import status_badge, category_chip %}
+{% from "components/pagination.html" import pagination %}
+{% from "components/icons.html" import icon, channel_icon %}
+{% block title %}Clients{% endblock %}
+{% block content %}
+{% call page_header('Client directory', clients.total|number ~ ' client' ~ ('s' if clients.total != 1 else '') ~ ' match your filters') %}
+  {% if current_user.can(P.CLIENTS_EXPORT) %}<a href="{{ url_for('clients.export', **params) }}" class="btn-secondary">{{ icon('download', 'h-4 w-4') }} Export</a>{% endif %}
+  {% if current_user.can(P.CLIENTS_IMPORT) %}<a href="{{ url_for('clients.import_upload') }}" class="btn-secondary">{{ icon('upload', 'h-4 w-4') }} Import CSV</a>{% endif %}
+  {% if current_user.can(P.CLIENTS_EDIT) %}<a href="{{ url_for('clients.create') }}" class="btn-primary">{{ icon('plus', 'h-4 w-4') }} Add client</a>{% endif %}
+{% endcall %}
+
+<div class="card">
+  <form method="get" class="grid gap-3 border-b border-slate-100 p-4 md:grid-cols-2 xl:grid-cols-6">
+    <div class="relative xl:col-span-2">
+      <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400">{{ icon('search', 'h-4 w-4') }}</span>
+      <input type="search" name="q" value="{{ filters.q }}" placeholder="Name, phone, email or company" class="form-input pl-9">
+    </div>
+    <select name="category" class="form-input" data-autosubmit aria-label="Category">
+      <option value="">All categories</option>
+      {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if c.id in filters.category }}>{{ c.name }}</option>{% endfor %}
+    </select>
+    <select name="tag" class="form-input" data-autosubmit aria-label="Tag">
+      <option value="">All tags</option>
+      {% for t in tags %}<option value="{{ t.id }}" {{ 'selected' if t.id in filters.tag }}>#{{ t.name }}</option>{% endfor %}
+    </select>
+    <select name="status" class="form-input" data-autosubmit aria-label="Status">
+      <option value="">Any status (not archived)</option>
+      {% for s in statuses.ALL %}<option value="{{ s }}" {{ 'selected' if filters.status == s }}>{{ statuses.LABELS[s] }}</option>{% endfor %}
+      <option value="all" {{ 'selected' if filters.status == 'all' }}>Everything incl. archived</option>
+    </select>
+    <div class="flex gap-2">
+      <input type="text" name="location" value="{{ filters.location }}" placeholder="Location" class="form-input">
+      <button class="btn-primary px-3" aria-label="Apply filters">{{ icon('search', 'h-4 w-4') }}</button>
+    </div>
+    <div class="flex flex-wrap items-center gap-3 text-xs text-slate-500 md:col-span-2 xl:col-span-6">
+      <span>Reachable on:</span>
+      {% for ch in ['sms', 'whatsapp', 'email'] %}
+        <label class="inline-flex items-center gap-1"><input type="radio" name="channel" value="{{ ch }}" class="text-brand-700 focus:ring-brand-500" {{ 'checked' if filters.channel == ch }} data-autosubmit> {{ ch|channel_label }}</label>
+      {% endfor %}
+      <label class="inline-flex items-center gap-1"><input type="radio" name="channel" value="" class="text-brand-700 focus:ring-brand-500" {{ 'checked' if not filters.channel }} data-autosubmit> Any</label>
+      <span class="ml-auto">Sort:</span>
+      <select name="sort" class="form-input w-auto py-1 text-xs" data-autosubmit>
+        {% for key, label in [('newest', 'Newest'), ('name', 'Name A–Z'), ('last_contact', 'Last contact'), ('oldest', 'Oldest')] %}
+          <option value="{{ key }}" {{ 'selected' if filters.sort == key }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      {% if params %}<a href="{{ url_for('clients.index') }}" class="font-medium text-brand-700 hover:text-brand-900">Clear filters</a>{% endif %}
+    </div>
+  </form>
+
+  <form method="post" action="{{ url_for('clients.bulk') }}" id="bulk-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if current_user.can(P.CLIENTS_CATEGORIZE) %}
+    <div class="flex flex-wrap items-center gap-3 border-b border-brand-100 bg-brand-50/60 px-4 py-3" data-selection-bar="client_ids" hidden>
+      <p class="text-sm font-medium text-brand-900"><span data-selection-count="client_ids">0</span> selected</p>
+      <select name="action" class="form-input w-auto py-1.5" id="bulk-action" required>
+        <option value="">Choose action…</option>
+        <option value="add_category">Add to category</option>
+        <option value="remove_category">Remove from category</option>
+        <option value="add_tag">Add tag</option>
+        <option value="remove_tag">Remove tag</option>
+        {% if current_user.can(P.CLIENTS_EDIT) %}<option value="archive">Archive</option>{% endif %}
+      </select>
+      <select name="target_id" class="form-input w-auto py-1.5" id="bulk-target">
+        <optgroup label="Categories">{% for c in categories %}<option value="{{ c.id }}" data-kind="category">{{ c.name }}</option>{% endfor %}</optgroup>
+        <optgroup label="Tags">{% for t in tags %}<option value="{{ t.id }}" data-kind="tag">#{{ t.name }}</option>{% endfor %}</optgroup>
+      </select>
+      <button class="btn-primary btn-sm" data-confirm="Apply this change to the selected clients?">Apply</button>
+    </div>
+    {% endif %}
+
+    {% set headers = (['<select>'] if current_user.can(P.CLIENTS_CATEGORIZE) else []) + ['Name', 'Phone', 'Email', 'Categories', 'Status', 'Last Contact', 'Actions'] %}
+    <div class="overflow-x-auto">
+      <table class="table-base">
+        <thead>
+          <tr>
+            {% if current_user.can(P.CLIENTS_CATEGORIZE) %}<th class="w-10"><input type="checkbox" class="form-checkbox" data-select-all="client_ids" aria-label="Select all"></th>{% endif %}
+            <th>Name</th><th>Phone</th><th>Email</th><th>Categories</th><th>Status</th><th>Last Contact</th><th class="text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for c in clients.items %}
+          <tr>
+            {% if current_user.can(P.CLIENTS_CATEGORIZE) %}<td><input type="checkbox" name="client_ids" value="{{ c.id }}" class="form-checkbox" aria-label="Select {{ c.full_name }}"></td>{% endif %}
+            <td>
+              <a href="{{ url_for('clients.detail', client_id=c.id) }}" class="flex items-center gap-3">
+                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-100 to-brand-200 text-xs font-bold text-brand-800">{{ c.initials }}</span>
+                <span>
+                  <span class="block font-medium text-slate-900 hover:text-brand-700">{{ c.full_name }}</span>
+                  {% if c.company %}<span class="block text-xs text-slate-500">{{ c.company }}</span>{% endif %}
+                </span>
+              </a>
+            </td>
+            <td class="font-mono text-xs">{{ c.phone or '—' }}</td>
+            <td class="text-slate-600">{{ c.email or '—' }}</td>
+            <td class="whitespace-normal">
+              <div class="flex max-w-xs flex-wrap gap-1">
+                {% for cat in c.categories[:3] %}{{ category_chip(cat) }}{% endfor %}
+                {% if c.categories|length > 3 %}<span class="text-xs text-slate-400">+{{ c.categories|length - 3 }}</span>{% endif %}
+              </div>
+            </td>
+            <td>{{ status_badge(c.status) }}</td>
+            <td class="text-slate-500">{{ c.last_contacted_at|timeago }}</td>
+            <td class="text-right">
+              <div class="inline-flex items-center gap-1">
+                <a href="{{ url_for('clients.detail', client_id=c.id) }}" class="btn-ghost btn-sm" title="View">{{ icon('eye', 'h-4 w-4') }}<span class="sr-only">View</span></a>
+                {% if current_user.can(P.CLIENTS_EDIT) %}
+                <a href="{{ url_for('clients.edit', client_id=c.id) }}" class="btn-ghost btn-sm" title="Edit">{{ icon('pencil', 'h-4 w-4') }}<span class="sr-only">Edit</span></a>
+                {% if c.status != 'archived' %}
+                <button type="submit" form="archive-{{ c.id }}" class="btn-ghost btn-sm text-rose-600" title="Archive">{{ icon('archive', 'h-4 w-4') }}<span class="sr-only">Archive</span></button>
+                {% endif %}
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if not clients.items %}
+        {% from "components/table.html" import empty_state %}
+        {{ empty_state('No clients found', 'Try adjusting your filters, or add and import clients to get started.') }}
+      {% endif %}
+    </div>
+  </form>
+  {% for c in clients.items %}{% if current_user.can(P.CLIENTS_EDIT) and c.status != 'archived' %}
+    <form id="archive-{{ c.id }}" method="post" action="{{ url_for('clients.archive', client_id=c.id) }}" data-confirm="Archive {{ c.full_name }}? They will be excluded from all campaigns." hidden>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    </form>
+  {% endif %}{% endfor %}
+  {{ pagination(clients, 'clients.index', params) }}
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/clients.js') }}" defer></script>{% endblock %}

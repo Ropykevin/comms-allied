@@ -1,0 +1,30 @@
+{# Server-side pagination for a Flask-SQLAlchemy Pagination object. Keeps current filters. #}
+{% macro pagination(page_obj, endpoint, params={}) -%}
+{% if page_obj.pages > 1 %}
+<nav class="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-sm" aria-label="Pagination">
+  <p class="text-slate-500">
+    Showing <span class="font-medium text-slate-700">{{ (page_obj.page - 1) * page_obj.per_page + 1 }}</span>–<span class="font-medium text-slate-700">{{ [page_obj.page * page_obj.per_page, page_obj.total]|min }}</span>
+    of <span class="font-medium text-slate-700">{{ page_obj.total|number }}</span>
+  </p>
+  <div class="flex items-center gap-1">
+    {% set args = dict(params) %}
+    {% if page_obj.has_prev %}
+      {% set _ = args.update({'page': page_obj.prev_num}) %}
+      <a class="btn-secondary btn-sm" href="{{ url_for(endpoint, **args) }}">Previous</a>
+    {% endif %}
+    {% for p in page_obj.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+      {% if p %}
+        {% set _ = args.update({'page': p}) %}
+        <a href="{{ url_for(endpoint, **args) }}" class="hidden rounded-lg px-3 py-1.5 text-xs font-semibold sm:inline-block {{ 'bg-brand-700 text-white' if p == page_obj.page else 'text-slate-600 hover:bg-slate-100' }}">{{ p }}</a>
+      {% else %}
+        <span class="hidden px-2 text-slate-400 sm:inline">…</span>
+      {% endif %}
+    {% endfor %}
+    {% if page_obj.has_next %}
+      {% set _ = args.update({'page': page_obj.next_num}) %}
+      <a class="btn-secondary btn-sm" href="{{ url_for(endpoint, **args) }}">Next</a>
+    {% endif %}
+  </div>
+</nav>
+{% endif %}
+{%- endmacro %}

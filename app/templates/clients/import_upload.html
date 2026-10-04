@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "components/table.html" import page_header %}
+{% from "components/icons.html" import icon %}
+{% block title %}Import clients{% endblock %}
+{% block content %}
+{{ page_header('Import clients', 'Upload a CSV file. You will see a preview before anything is saved.') }}
+
+<ol class="mb-8 flex flex-wrap items-center gap-3 text-sm">
+  {% for label in ['Upload CSV', 'Validate & preview', 'Confirm', 'Import'] %}
+  <li class="flex items-center gap-2">
+    <span class="step-pill {{ 'border-brand-700 bg-brand-700 text-white' if loop.first else 'border-slate-300 text-slate-400' }}">{{ loop.index }}</span>
+    <span class="{{ 'font-semibold text-slate-900' if loop.first else 'text-slate-500' }}">{{ label }}</span>
+    {% if not loop.last %}<span class="mx-2 h-px w-8 bg-slate-300"></span>{% endif %}
+  </li>
+  {% endfor %}
+</ol>
+
+<div class="grid gap-6 lg:grid-cols-3">
+  <form method="post" enctype="multipart/form-data" class="card lg:col-span-2">
+    {{ form.hidden_tag() }}
+    <div class="card-body">
+      <label for="file" class="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-14 text-center transition hover:border-brand-400 hover:bg-brand-50/50">
+        <span class="flex h-14 w-14 items-center justify-center rounded-full bg-brand-100 text-brand-700">{{ icon('upload', 'h-7 w-7') }}</span>
+        <span class="mt-4 text-sm font-semibold text-slate-900">Choose a CSV file</span>
+        <span class="mt-1 text-xs text-slate-500" id="file-name">Maximum 10 MB · up to 20,000 rows</span>
+        {{ form.file(class_='sr-only', accept='.csv', id='file') }}
+      </label>
+      {% for error in form.file.errors %}<p class="form-error mt-2">{{ error }}</p>{% endfor %}
+    </div>
+    <div class="flex justify-end border-t border-slate-100 px-6 py-4">
+      <button class="btn-primary">Upload &amp; validate</button>
+    </div>
+  </form>
+
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">File format</h2></div>
+    <div class="card-body space-y-4 text-sm text-slate-600">
+      <p>The first row must contain column headers. Supported columns:</p>
+      <ul class="space-y-1 text-xs">
+        <li><span class="font-semibold text-slate-900">Name</span> — required</li>
+        <li><span class="font-semibold text-slate-900">Phone</span> and/or <span class="font-semibold text-slate-900">Email</span> — at least one</li>
+        <li>WhatsApp, Company, Location, Status, Notes — optional</li>
+        <li>Categories, Tags — optional, separated by <code>;</code></li>
+      </ul>
+      <pre class="overflow-x-auto rounded-lg bg-slate-900 p-3 text-[11px] leading-relaxed text-slate-100">Name,Phone,Email,Company,Location
+John Kamau,+254712345678,john@example.com,ABC Ltd,Nairobi</pre>
+      <a href="{{ url_for('clients.import_sample') }}" class="btn-secondary btn-sm w-full">{{ icon('download', 'h-4 w-4') }} Download sample CSV</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/import.js') }}" defer></script>{% endblock %}

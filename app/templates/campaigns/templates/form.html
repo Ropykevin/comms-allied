@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "components/table.html" import page_header, field %}
+{% block title %}{{ 'Edit template' if template else 'New template' }}{% endblock %}
+{% block content %}
+{{ page_header(('Edit “' ~ template.name ~ '”') if template else 'New message template', 'Use {{first_name}}, {{last_name}}, {{full_name}}, {{company}} or {{location}} to personalise.') }}
+<div class="grid gap-6 xl:grid-cols-3">
+  <form method="post" class="card xl:col-span-2" novalidate>
+    {{ form.hidden_tag() }}
+    <div class="card-body grid gap-5 sm:grid-cols-2">
+      {{ field(form.name) }}
+      {{ field(form.channel, id='template-channel') }}
+      <div class="sm:col-span-2" data-template-email>{{ field(form.subject) }}</div>
+      <div class="sm:col-span-2">{{ field(form.content, rows=10, **{'data-counter': '#tpl-counter'}) }}<p class="form-help" id="tpl-counter"></p></div>
+      <label class="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2" data-template-email>{{ form.is_html(class_='form-checkbox') }} {{ form.is_html.label.text }}</label>
+      <div class="sm:col-span-2" data-template-whatsapp>{{ field(form.provider_template_name, help=form.provider_template_name.description) }}</div>
+      {{ field(form.status) }}
+    </div>
+    <div class="flex items-center justify-between gap-3 border-t border-slate-100 px-6 py-4">
+      <div>
+        {% if template %}
+        <button type="submit" form="delete-template" class="btn-ghost text-rose-600">Delete</button>
+        {% endif %}
+      </div>
+      <div class="flex gap-3">
+        <a href="{{ url_for('templates.index') }}" class="btn-secondary">Cancel</a>
+        <button class="btn-primary">Save template</button>
+      </div>
+    </div>
+  </form>
+  <div class="card self-start p-6 text-sm text-slate-600">
+    <p class="font-semibold text-slate-900">Personalisation</p>
+    <p class="mt-2">Variables are replaced for each client when the message is sent:</p>
+    <pre class="mt-3 whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-xs">Hello {{ '{{first_name}}' }},
+
+We are excited to share our latest safari packages with you.</pre>
+    <p class="mt-3">becomes <span class="font-medium text-slate-900">“Hello John, …”</span> for John Kamau.</p>
+  </div>
+</div>
+{% if template %}
+<form id="delete-template" method="post" action="{{ url_for('templates.delete', template_id=template.id) }}" data-confirm="Delete this template? Campaigns that used it keep their content." hidden>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+{% endif %}
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/template_form.js') }}" defer></script>{% endblock %}

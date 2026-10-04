@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+{% from "components/icons.html" import icon, channel_icon %}
+{% block title %}{{ 'Edit campaign' if campaign else 'Create campaign' }}{% endblock %}
+{% block content %}
+{% set steps = ['Details', 'Audience', 'Channel', 'Message', 'Review & send'] %}
+<div class="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+  <div>
+    <h1 class="page-title">{{ ('Edit “' ~ campaign.name ~ '”') if campaign else 'Create a campaign' }}</h1>
+    <p class="page-subtitle">Pick a client category, choose a channel, write your message and send — the system works out who receives it.</p>
+  </div>
+  <a href="{{ url_for('campaigns.detail', campaign_id=campaign.id) if campaign else url_for('campaigns.index') }}" class="btn-ghost">Cancel</a>
+</div>
+
+<ol class="mb-8 grid grid-cols-5 gap-2" id="wizard-steps">
+  {% for label in steps %}
+  <li>
+    <button type="button" class="group flex w-full flex-col items-start gap-2 text-left" data-goto-step="{{ loop.index }}">
+      <span class="h-1.5 w-full rounded-full bg-slate-200 transition group-data-[state=done]:bg-brand-600 group-data-[state=current]:bg-sun-500" data-step-bar></span>
+      <span class="hidden text-xs font-semibold text-slate-400 sm:block group-data-[state=current]:text-slate-900 group-data-[state=done]:text-brand-700">{{ loop.index }}. {{ label }}</span>
+    </button>
+  </li>
+  {% endfor %}
+</ol>
+
+{% if errors %}
+<div class="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800" role="alert">
+  <p class="font-semibold">Please fix the following:</p>
+  <ul class="mt-1 list-inside list-disc">{% for field, msg in errors %}<li>{{ msg }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<form method="post" enctype="multipart/form-data" id="campaign-form" novalidate
+      data-estimate-url="{{ url_for('campaigns.audience_estimate') }}"
+      data-preview-url="{{ url_for('campaigns.preview') }}"
+      data-template-url="{{ url_for('campaigns.template_json', template_id=0) }}"
+      data-initial-step="{{ initial_step }}">
+  {{ form.hidden_tag() }}
+  <script type="application/json" id="initial-estimate">{{ initial_estimate|tojson }}</script>
+
+  <div class="grid gap-6 xl:grid-cols-3">
+    <div class="xl:col-span-2">
+
+      {# STEP 1 — DETAILS #}
+      <section class="card" data-step="1">
+        <div class="card-header"><h2 class="card-title">1. Campaign details</h2></div>
+        <div class="card-body space-y-5">
+          <div>
+            {{ form.name.label(class_='form-label') }}
+            {{ form.name(class_='form-input', placeholder='e.g. October Safari Campaign', required=True, **{'data-required': 'Give your campaign a name.'}) }}
+            {% for e in form.name.errors %}<p class="form-error">{{ e }}</p>{% endfor %}
+          </div>
+          <div>
+            {{ form.description.label(class_='form-label') }}
+            {{ form.description(class_='form-input', rows=3, placeholder='Internal notes — clients never see this.') }}
+          </div>
+        </div>
+      </section>
+
+      {# STEP 2 — AUDIENCE #}
+      <section class="card" data-step="2">
+        <div class="card-header"><h2 class="card-title">2. Who should receive it?</h2></div>
+        <div class="card-body space-y-6">
+          <div>
+            <p class="form-label">Client categories</p>
+            <p class="form-help -mt-1 mb-3">Choose one or more. Clients in <em>any</em> selected category are included. Leave empty to target all clients.</p>
+            <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {% for c in categories %}
+              <label class="flex cursor-pointer items-center justify-between gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-sm transition hover:border-brand-300 has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50 has-[:checked]:ring-1 has-[:checked]:ring-brand-600">
+                <span class="flex items-center gap-2">
+                  <input type="checkbox" name="category_ids" value="{{ c.id }}" class="form-checkbox" data-audience data-label="{{ c.name }}" {{ 'checked' if c.id in audience.category_ids }}>
+                  <span class="font-medium text-slate-800">{{ c.name }}</span>
+                </span>
+                <span class="rounded-full bg-slate-100 px-2 text-xs text-slate-500">{{ category_counts.get(c.id, 0) }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+
+          <details class="group rounded-xl border border-slate-200" {{ 'open' if audience.tag_ids or audience.statuses or audience.location }}>
+            <summary class="flex cursor-pointer items-center justify-between px-4 py-3 text-sm font-semibold text-slate-700">
+              Optional filters <span class="text-xs font-normal text-slate-400">Tags · Status · Location</span>
+            </summary>
+            <div class="space-y-5 border-t border-slate-100 p-4">
+              <div>
+                <p class="form-label">Tags <span class="font-normal text-slate-400">(any of)</span></p>
+                <div class="flex flex-wrap gap-2">
+                  {% for t in tags %}
+                  <label class="cursor-pointer">
+                    <input type="checkbox" name="tag_ids" value="{{ t.id }}" class="peer sr-only" data-audience data-label="#{{ t.name }}" {{ 'checked' if t.id in audience.tag_ids }}>
+                    <span class="inline-flex rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 peer-checked:border-brand-600 peer-checked:bg-brand-600 peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500">#{{ t.name }}</span>
+                  </label>
+                  {% endfor %}
+                </div>
+              </div>
+              <div class="grid gap-5 sm:grid-cols-2">
+                <div>
+                  <p class="form-label">Client status</p>
+                  <div class="flex flex-wrap gap-4">
+                    {% for s in statuses %}
+                    <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="statuses" value="{{ s }}" class="form-checkbox" data-audience data-label="{{ status_labels[s] }}" {{ 'checked' if s in audience.statuses }}> {{ status_labels[s] }}</label>
+                    {% endfor %}
+                  </div>
+                  <p class="form-help">Archived clients are never included.</p>
+                </div>
+                <div>
+                  <label for="location" class="form-label">Location contains</label>
+                  <input type="text" id="location" name="location" value="{{ audience.location }}" class="form-input" placeholder="e.g. Nairobi" data-audience>
+                </div>
+              </div>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      {# STEP 3 — CHANNEL #}
+      <section class="card" data-step="3">
+        <div class="card-header"><h2 class="card-title">3. Choose a channel</h2></div>
+        <div class="card-body space-y-5">
+          <div class="grid gap-3 sm:grid-cols-3">
+            {% for value, label in form.channel.choices %}
+            <label class="relative flex cursor-pointer flex-col rounded-2xl border-2 border-slate-200 p-5 transition hover:border-brand-300 has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50/60">
+              <input type="radio" name="channel" value="{{ value }}" class="sr-only" {{ 'checked' if form.channel.data == value }} data-channel-input>
+              <span class="flex h-11 w-11 items-center justify-center rounded-xl {{ {'sms': 'bg-sky-100 text-sky-700', 'whatsapp': 'bg-emerald-100 text-emerald-700', 'email': 'bg-amber-100 text-amber-700'}[value] }}">{{ channel_icon(value, 'h-6 w-6') }}</span>
+              <span class="mt-3 text-base font-semibold text-slate-900">{{ label }}</span>
+              <span class="text-sm text-slate-500"><span class="font-semibold text-slate-900" data-channel-available="{{ value }}">{{ initial_estimate.channels[value].available|number }}</span> available</span>
+            </label>
+            {% endfor %}
+          </div>
+          {% for e in form.channel.errors %}<p class="form-error">{{ e }}</p>{% endfor %}
+          <div id="channel-summary" class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">Select a channel to see how many clients it can reach.</div>
+        </div>
+      </section>
+
+      {# STEP 4 — MESSAGE #}
+      <section class="card" data-step="4">
+        <div class="card-header"><h2 class="card-title">4. Write your message</h2></div>
+        <div class="card-body space-y-5">
+          <div>
+            <label for="template_id" class="form-label">Start from a template</label>
+            <select id="template_id" name="template_id" class="form-input">
+              <option value="0">— Start from scratch —</option>
+              {% for t in templates %}
+                <option value="{{ t.id }}" data-channel="{{ t.channel }}" {{ 'selected' if form.template_id.data == t.id }}>{{ t.name }} ({{ t.channel_label }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div data-email-only>
+            {{ form.subject.label(class_='form-label') }}
+            {{ form.subject(class_='form-input', placeholder='e.g. Your exclusive safari offer, {{first_name}}', **{'data-preview-input': ''}) }}
+            {% for e in form.subject.errors %}<p class="form-error">{{ e }}</p>{% endfor %}
+          </div>
+          <div>
+            <div class="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+              {{ form.content.label(class_='form-label mb-0') }}
+              <div class="flex flex-wrap gap-1" role="toolbar" aria-label="Insert personalisation">
+                {% for v in ['first_name', 'last_name', 'company', 'full_name', 'location'] %}
+                <button type="button" class="rounded-md border border-brand-200 bg-brand-50 px-2 py-0.5 font-mono text-[11px] text-brand-700 hover:bg-brand-100" data-insert-var="{{ v }}">{{ '{{' ~ v ~ '}}' }}</button>
+                {% endfor %}
+              </div>
+            </div>
+            {{ form.content(class_='form-input font-[inherit]', rows=10, placeholder='Hello {{first_name}},\n\nWe are excited to share our latest safari packages with you.\n\nContact Allied Tours & Travel Agency today.\n\nThank you.', **{'data-preview-input': '', 'data-required': 'Write the message you want to send.'}) }}
+            {% for e in form.content.errors %}<p class="form-error">{{ e }}</p>{% endfor %}
+            <div class="mt-1 flex justify-between text-xs text-slate-500">
+              <span id="content-counter">0 characters</span>
+              <span id="sms-segments" data-sms-only></span>
+            </div>
+            <p id="unknown-vars" class="form-error" hidden></p>
+          </div>
+          <div class="space-y-4 rounded-xl border border-slate-200 p-4" data-email-only>
+            <label class="flex items-center gap-2 text-sm text-slate-700">{{ form.is_html(class_='form-checkbox', **{'data-preview-input': ''}) }} My message is HTML (otherwise it's wrapped in the Allied email design)</label>
+            <div>
+              {{ form.attachment.label(class_='form-label') }}
+              {% if campaign and campaign.attachment_name %}
+                <p class="mb-2 flex items-center gap-3 text-sm text-slate-700">📎 {{ campaign.attachment_name }}
+                  <label class="flex items-center gap-1 text-xs text-rose-600">{{ form.remove_attachment(class_='form-checkbox') }} Remove</label></p>
+              {% endif %}
+              {{ form.attachment(class_='block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-brand-700 hover:file:bg-brand-100', accept='.pdf,.png,.jpg,.jpeg,.docx,.xlsx,.pptx,.txt') }}
+              <p class="form-help">Optional · PDF, image or Office document up to 10 MB.</p>
+              {% for e in form.attachment.errors %}<p class="form-error">{{ e }}</p>{% endfor %}
+            </div>
+          </div>
+          <p class="rounded-lg bg-emerald-50 p-3 text-xs text-emerald-800" data-whatsapp-only>WhatsApp only allows businesses to start conversations with Meta-approved templates. Pick a template that has an approved WhatsApp template name, or clients must have messaged you in the last 24 hours.</p>
+        </div>
+      </section>
+
+      {# STEP 5 — REVIEW #}
+      <section class="card" data-step="5">
+        <div class="card-header"><h2 class="card-title">5. Review &amp; send</h2></div>
+        <div class="card-body space-y-6">
+          <dl class="grid gap-4 text-sm sm:grid-cols-2">
+            <div class="rounded-xl bg-slate-50 p-4"><dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Campaign</dt><dd class="mt-1 font-semibold text-slate-900" id="review-name">—</dd></div>
+            <div class="rounded-xl bg-slate-50 p-4"><dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Channel</dt><dd class="mt-1 font-semibold text-slate-900" id="review-channel">—</dd></div>
+            <div class="rounded-xl bg-slate-50 p-4 sm:col-span-2"><dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Audience</dt><dd class="mt-1 text-slate-900" id="review-audience">All clients</dd></div>
+            <div class="rounded-xl bg-brand-50 p-4 sm:col-span-2"><dt class="text-xs font-medium uppercase tracking-wide text-brand-700">Recipients</dt><dd class="mt-1 text-2xl font-bold text-brand-900" id="review-recipients">—</dd><dd class="text-xs text-brand-700" id="review-excluded"></dd></div>
+          </dl>
+
+          <fieldset>
+            <legend class="form-label">When should it go out?</legend>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <label class="flex cursor-pointer items-center gap-3 rounded-xl border-2 border-slate-200 p-4 has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50/60">
+                <input type="radio" name="send_mode" value="now" class="text-brand-700 focus:ring-brand-500" {{ 'checked' if not form.schedule_date.data }}>
+                <span><span class="block text-sm font-semibold text-slate-900">Send now</span><span class="text-xs text-slate-500">Messages start sending immediately in the background.</span></span>
+              </label>
+              <label class="flex cursor-pointer items-center gap-3 rounded-xl border-2 border-slate-200 p-4 has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50/60">
+                <input type="radio" name="send_mode" value="schedule" class="text-brand-700 focus:ring-brand-500" {{ 'checked' if form.schedule_date.data }}>
+                <span><span class="block text-sm font-semibold text-slate-900">Schedule</span><span class="text-xs text-slate-500">Pick a date and time.</span></span>
+              </label>
+            </div>
+            <div class="mt-4 grid gap-4 sm:grid-cols-3" id="schedule-fields">
+              <div>{{ form.schedule_date.label(class_='form-label') }}{{ form.schedule_date(class_='form-input') }}</div>
+              <div>{{ form.schedule_time.label(class_='form-label') }}{{ form.schedule_time(class_='form-input') }}</div>
+              <div>{{ form.timezone.label(class_='form-label') }}{{ form.timezone(class_='form-input') }}</div>
+              {% for e in form.schedule_date.errors %}<p class="form-error sm:col-span-3">{{ e }}</p>{% endfor %}
+            </div>
+          </fieldset>
+        </div>
+      </section>
+
+      <div class="mt-6 flex flex-wrap items-center justify-between gap-3">
+        <button type="button" class="btn-secondary" data-wizard-prev>← Back</button>
+        <div class="flex flex-wrap gap-2">
+          <button type="submit" name="action" value="save_draft" class="btn-ghost" formnovalidate>Save draft</button>
+          <button type="button" class="btn-primary" data-wizard-next>Continue →</button>
+          {% if current_user.can(P.CAMPAIGNS_SEND) %}
+          <button type="submit" name="action" value="send_now" class="btn-accent" data-final-action="now" data-confirm="Send this campaign now? Messages cannot be recalled once sent.">{{ icon('send', 'h-4 w-4') }} Send now</button>
+          <button type="submit" name="action" value="schedule" class="btn-accent" data-final-action="schedule" data-confirm="Schedule this campaign?">{{ icon('clock', 'h-4 w-4') }} Schedule campaign</button>
+          {% else %}
+          <p class="text-xs text-slate-500" data-final-action="now">Your role can prepare campaigns; a manager sends them.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {# SIDEBAR: live audience + preview #}
+    <aside class="space-y-6 xl:sticky xl:top-24 xl:self-start">
+      <div class="card overflow-hidden">
+        <div class="bg-gradient-to-br from-brand-800 to-brand-600 p-5 text-white">
+          <p class="text-xs font-medium uppercase tracking-wider text-brand-100">Estimated recipients</p>
+          <p class="mt-1 text-4xl font-bold" id="est-total">{{ initial_estimate.total|number }}</p>
+          <p class="text-xs text-brand-100" id="est-caption">clients match this audience</p>
+        </div>
+        <ul class="divide-y divide-slate-100 text-sm">
+          {% for ch in ['sms', 'whatsapp', 'email'] %}
+          <li class="flex items-center justify-between px-5 py-3">
+            <span class="flex items-center gap-2 text-slate-600">{{ channel_icon(ch, 'h-4 w-4') }} {{ ch|channel_label }}</span>
+            <span><span class="font-semibold text-slate-900" data-est-channel="{{ ch }}">{{ initial_estimate.channels[ch].available|number }}</span> <span class="text-xs text-slate-400">available</span></span>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h2 class="card-title">Preview</h2><span class="text-xs text-slate-500" id="preview-client"></span></div>
+        <div class="p-5">
+          <div id="preview-chat" class="rounded-2xl bg-[#e5ddd5] p-4">
+            <div class="ml-auto max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-sm bg-white px-4 py-3 text-sm text-slate-800 shadow-sm" id="preview-bubble"><span class="text-slate-400">Your message preview appears here.</span></div>
+          </div>
+          <div id="preview-email" hidden>
+            <p class="mb-2 truncate text-sm"><span class="text-slate-500">Subject:</span> <span class="font-semibold text-slate-900" id="preview-subject"></span></p>
+            <iframe id="preview-frame" title="Email preview" sandbox class="h-96 w-full rounded-xl border border-slate-200 bg-white"></iframe>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/campaign_wizard.js') }}" defer></script>{% endblock %}

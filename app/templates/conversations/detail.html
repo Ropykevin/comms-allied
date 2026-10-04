@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% from "components/icons.html" import icon, channel_icon %}
+{% from "components/badge.html" import status_badge, channel_badge, category_chip %}
+{% block title %}{{ conversation.client.full_name }} · {{ conversation.channel_label }}{% endblock %}
+{% block content %}
+<div class="mb-6 flex items-center gap-3">
+  <a href="{{ url_for('conversations.inbox', **list_params) }}" class="text-sm font-medium text-brand-700 hover:text-brand-900">← Inbox</a>
+</div>
+<div class="grid gap-6 lg:grid-cols-[22rem_1fr] xl:grid-cols-[22rem_1fr_18rem]" style="min-height: 70vh">
+  <div class="hidden lg:block">{% include "conversations/_list.html" %}</div>
+
+  <section class="card flex min-h-[70vh] flex-col overflow-hidden" id="thread" data-poll-url="{{ url_for('conversations.poll', conversation_id=conversation.id) }}" data-latest-id="{{ latest_id }}">
+    <header class="flex flex-wrap items-center gap-3 border-b border-slate-100 px-6 py-4">
+      <span class="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-brand-600 to-brand-800 text-sm font-bold text-white">{{ conversation.client.initials }}</span>
+      <div class="min-w-0 flex-1">
+        <a href="{{ url_for('clients.detail', client_id=conversation.client_id) }}" class="block truncate font-semibold text-slate-900 hover:text-brand-700">{{ conversation.client.full_name }}</a>
+        <p class="truncate text-xs text-slate-500">{{ contact.address if contact else 'No contact details' }}{% if conversation.subject %} · {{ conversation.subject }}{% endif %}</p>
+      </div>
+      {{ channel_badge(conversation.channel) }}
+      {{ status_badge(conversation.status) }}
+    </header>
+
+    <div class="flex-1 space-y-4 overflow-y-auto bg-slate-50/60 px-6 py-6" id="thread-scroll">
+      {% for kind, when, item in items %}
+        {% if kind == 'note' %}
+          <div class="mx-auto max-w-lg rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p class="text-[11px] font-semibold uppercase tracking-wide text-amber-700">{{ icon('note', 'inline h-3 w-3') }} Internal note · {{ item.user.full_name if item.user else 'Staff' }} · {{ item.created_at|localtime }}</p>
+            <p class="mt-1 whitespace-pre-wrap">{{ item.content }}</p>
+          </div>
+        {% elif item.is_inbound %}
+          <div class="flex max-w-[80%] flex-col items-start">
+            <div class="rounded-2xl rounded-tl-sm bg-white px-4 py-3 text-sm text-slate-800 shadow-sm ring-1 ring-slate-100">
+              {% if item.subject %}<p class="mb-1 text-xs font-semibold text-slate-500">{{ item.subject }}</p>{% endif %}
+              <p class="whitespace-pre-wrap break-words">{{ item.content }}</p>
+            </div>
+            <p class="mt-1 text-[11px] text-slate-400">{{ item.created_at|localtime }}{% if item.campaign %} · reply to “{{ item.campaign.name }}”{% endif %}</p>
+          </div>
+        {% else %}
+          <div class="ml-auto flex max-w-[80%] flex-col items-end">
+            <div class="rounded-2xl rounded-tr-sm px-4 py-3 text-sm shadow-sm {{ 'bg-rose-50 text-rose-900 ring-1 ring-rose-200' if item.status == 'failed' else 'bg-brand-700 text-white' }}">
+              {% if item.subject %}<p class="mb-1 text-xs font-semibold opacity-80">{{ item.subject }}</p>{% endif %}
+              {% if item.is_html %}<p class="text-xs italic opacity-80">HTML email</p><p class="whitespace-pre-wrap break-words">{{ item.content|striptags|truncate_text(400) }}</p>
+              {% else %}<p class="whitespace-pre-wrap break-words">{{ item.content }}</p>{% endif %}
+            </div>
+            <p class="mt-1 flex items-center gap-1 text-[11px] text-slate-400">
+              {% if item.campaign %}<a href="{{ url_for('campaigns.detail', campaign_id=item.campaign_id) }}" class="hover:text-brand-700">Campaign: {{ item.campaign.name }}</a> ·{% elif item.sent_by %}{{ item.sent_by.full_name }} ·{% endif %}
+              {{ item.created_at|localtime }} · <span data-message-status="{{ item.id }}">{{ item.status_label }}</span>
+              {% if item.status == 'failed' and item.error_message %}<span class="text-rose-500">— {{ item.error_message|truncate_text(80) }}</span>{% endif %}
+            </p>
+          </div>
+        {% endif %}
+      {% else %}
+        <p class="py-16 text-center text-sm text-slate-500">No messages yet. Send the first one below.</p>
+      {% endfor %}
+    </div>
+
+    <div id="new-messages" class="border-t border-sun-200 bg-sun-50 px-6 py-2 text-center text-sm text-sun-700" hidden>
+      New message received. <a href="" class="font-semibold underline">Refresh</a>
+    </div>
+
+    {% if current_user.can(P.CONVERSATIONS_REPLY) %}
+    <div class="border-t border-slate-100 p-4">
+      <div class="mb-3 flex gap-1 text-sm" role="tablist">
+        <button type="button" class="rounded-lg bg-brand-50 px-3 py-1.5 font-semibold text-brand-700" data-composer-tab="reply" role="tab">Reply to client</button>
+        <button type="button" class="rounded-lg px-3 py-1.5 font-semibold text-slate-500 hover:bg-slate-100" data-composer-tab="note" role="tab">Internal note</button>
+      </div>
+      {% if contact and not contact.is_allowed %}
+        <p class="rounded-lg bg-rose-50 p-3 text-sm text-rose-700" data-composer="reply">{{ conversation.client.first_name }} has opted out of {{ conversation.channel_label }}. You can't send messages on this channel.</p>
+      {% else %}
+      <form method="post" action="{{ url_for('conversations.reply', conversation_id=conversation.id) }}" class="space-y-3" data-composer="reply">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if conversation.channel == 'whatsapp' and not window_open %}
+          <p class="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">More than 24 hours have passed since {{ conversation.client.first_name }}'s last WhatsApp message. WhatsApp may reject free-form replies until they message you again — use an approved template campaign instead.</p>
+        {% endif %}
+        {% if conversation.channel == 'email' %}
+          <input type="text" name="subject" class="form-input" placeholder="Subject (defaults to Re: {{ conversation.subject or 'Allied Tours & Travel' }})">
+        {% endif %}
+        <textarea name="content" rows="3" class="form-input" placeholder="Write a reply to {{ conversation.client.first_name }}…" required data-counter="#reply-counter"></textarea>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <span class="text-xs text-slate-400" id="reply-counter"></span>
+          <div class="flex gap-2">
+            <button name="then_status" value="resolved" class="btn-secondary btn-sm">Send &amp; resolve</button>
+            <button class="btn-primary btn-sm">{{ icon('send', 'h-4 w-4') }} Send {{ conversation.channel_label }}</button>
+          </div>
+        </div>
+      </form>
+      {% endif %}
+      <form method="post" action="{{ url_for('conversations.add_note', conversation_id=conversation.id) }}" class="space-y-3" data-composer="note" hidden>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <textarea name="content" rows="3" class="form-input border-amber-300 bg-amber-50/50 focus:border-amber-500 focus:ring-amber-500" placeholder="Visible to your team only — never sent to the client." required></textarea>
+        <div class="flex justify-end"><button class="btn btn-sm bg-amber-500 text-white hover:bg-amber-600">Add note</button></div>
+      </form>
+    </div>
+    {% endif %}
+  </section>
+
+  <aside class="space-y-6 xl:block">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Status</h2></div>
+      <div class="card-body space-y-2">
+        {% if current_user.can(P.CONVERSATIONS_REPLY) %}
+        <div class="grid grid-cols-2 gap-2">
+          {% for s in statuses.ALL %}
+          <form method="post" action="{{ url_for('conversations.set_status', conversation_id=conversation.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button name="status" value="{{ s }}" class="w-full rounded-lg border px-3 py-2 text-xs font-semibold transition {{ 'border-brand-600 bg-brand-600 text-white' if conversation.status == s else 'border-slate-200 text-slate-600 hover:bg-slate-50' }}" {{ 'disabled' if conversation.status == s }}>{{ statuses.LABELS[s] }}</button>
+          </form>
+          {% endfor %}
+        </div>
+        {% else %}
+          {{ status_badge(conversation.status) }}
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Assignment</h2></div>
+      <div class="card-body">
+        <p class="mb-3 text-sm text-slate-600">{{ ('Assigned to ' ~ conversation.assigned_to.full_name) if conversation.assigned_to else 'Nobody is handling this yet.' }}</p>
+        {% if current_user.can(P.CONVERSATIONS_ASSIGN) %}
+        <form method="post" action="{{ url_for('conversations.assign', conversation_id=conversation.id) }}" class="space-y-2">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <select name="user_id" class="form-input" aria-label="Assign to">
+            <option value="">Unassigned</option>
+            {% for a in agents %}<option value="{{ a.id }}" {{ 'selected' if conversation.assigned_to_id == a.id }}>{{ a.full_name }}{{ ' (you)' if a.id == current_user.id }}</option>{% endfor %}
+          </select>
+          <div class="flex gap-2">
+            <button class="btn-secondary btn-sm flex-1">Assign</button>
+            {% if conversation.assigned_to_id != current_user.id and current_user.can(P.CONVERSATIONS_REPLY) %}
+            <button name="user_id" value="{{ current_user.id }}" class="btn-primary btn-sm flex-1">Assign to me</button>
+            {% endif %}
+          </div>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Client</h2></div>
+      <div class="card-body space-y-3 text-sm">
+        <p class="font-semibold text-slate-900">{{ conversation.client.full_name }}</p>
+        {% if conversation.client.company %}<p class="text-slate-600">{{ conversation.client.company }}</p>{% endif %}
+        <div class="flex flex-wrap gap-1">{% for c in conversation.client.categories %}{{ category_chip(c) }}{% endfor %}</div>
+        <div class="space-y-1 pt-2 text-xs text-slate-500">
+          {% for cc in conversation.client.contact_channels %}
+            <p class="flex items-center gap-2">{{ channel_icon(cc.channel, 'h-3.5 w-3.5') }} {{ cc.address or '—' }} {% if not cc.is_allowed %}<span class="text-rose-600">(opted out)</span>{% endif %}</p>
+          {% endfor %}
+        </div>
+        <a href="{{ url_for('clients.detail', client_id=conversation.client_id) }}" class="btn-secondary btn-sm w-full">Open client profile</a>
+      </div>
+    </div>
+  </aside>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/conversation.js') }}" defer></script>{% endblock %}

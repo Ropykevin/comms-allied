@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% from "components/badge.html" import status_badge, category_chip, tag_chip, channel_badge, badge %}
+{% from "components/icons.html" import icon, channel_icon %}
+{% from "components/modal.html" import modal %}
+{% block title %}{{ client.full_name }}{% endblock %}
+{% block content %}
+<div class="mb-8 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+  <div class="flex items-center gap-4">
+    <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-600 to-brand-800 text-xl font-bold text-white shadow-card">{{ client.initials }}</div>
+    <div>
+      <div class="flex flex-wrap items-center gap-3">
+        <h1 class="page-title">{{ client.full_name }}</h1>
+        {{ status_badge(client.status) }}
+      </div>
+      <p class="page-subtitle">{% if client.company %}{{ client.company }} · {% endif %}{{ client.location or 'Location unknown' }} · Client since {{ client.created_at|localtime('%b %Y') }}</p>
+    </div>
+  </div>
+  <div class="flex flex-wrap gap-2">
+    {% if current_user.can(P.CLIENTS_EDIT) %}
+      <a href="{{ url_for('clients.edit', client_id=client.id) }}" class="btn-secondary">{{ icon('pencil', 'h-4 w-4') }} Edit</a>
+      {% if client.status == 'archived' %}
+        <form method="post" action="{{ url_for('clients.restore', client_id=client.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-secondary">Restore</button></form>
+      {% else %}
+        <form method="post" action="{{ url_for('clients.archive', client_id=client.id) }}" data-confirm="Archive {{ client.full_name }}? They will be excluded from all campaigns."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-secondary text-rose-600">{{ icon('archive', 'h-4 w-4') }} Archive</button></form>
+      {% endif %}
+    {% endif %}
+    {% if current_user.can(P.CLIENTS_DELETE) %}
+      <form method="post" action="{{ url_for('clients.delete', client_id=client.id) }}" data-confirm="Permanently delete {{ client.full_name }} and all of their conversations? This cannot be undone."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-danger">Delete</button></form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="grid gap-6 xl:grid-cols-3">
+  <div class="space-y-6">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Contact information</h2></div>
+      <dl class="card-body space-y-4 text-sm">
+        <div><dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Phone</dt><dd class="mt-0.5 font-mono text-slate-900">{{ client.phone or '—' }}</dd></div>
+        {% set wa = client.channel('whatsapp') %}
+        <div><dt class="text-xs font-medium uppercase tracking-wide text-slate-500">WhatsApp</dt><dd class="mt-0.5 font-mono text-slate-900">{{ wa.address if wa and wa.address else '—' }}</dd></div>
+        <div><dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Email</dt><dd class="mt-0.5 text-slate-900">{{ client.email or '—' }}</dd></div>
+        <div><dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Last contact</dt><dd class="mt-0.5 text-slate-900">{{ client.last_contacted_at|localtime if client.last_contacted_at else 'Never' }}</dd></div>
+        {% if client.notes %}<div><dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Notes</dt><dd class="mt-0.5 text-slate-700">{{ client.notes|nl2br }}</dd></div>{% endif %}
+      </dl>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">Categories</h2>
+        {% if current_user.can(P.CLIENTS_CATEGORIZE) %}<button type="button" class="text-sm font-medium text-brand-700 hover:text-brand-900" data-modal-open="categories-modal">Manage</button>{% endif %}
+      </div>
+      <div class="card-body flex flex-wrap gap-2">
+        {% for cat in client.categories %}{{ category_chip(cat) }}{% else %}<p class="text-sm text-slate-500">Not in any category yet.</p>{% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Tags</h2></div>
+      <div class="card-body flex flex-wrap gap-2">
+        {% for t in client.tags %}{{ tag_chip(t) }}{% else %}<p class="text-sm text-slate-500">No tags.</p>{% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Communication</h2></div>
+      <ul class="divide-y divide-slate-100">
+        {% for ch in channels %}
+        {% set cc = client.channel(ch) %}
+        <li class="flex items-center gap-3 px-6 py-3">
+          {{ channel_icon(ch, 'h-5 w-5 text-brand-600') }}
+          <div class="flex-1">
+            <p class="text-sm font-medium text-slate-900">{{ ch|channel_label }}</p>
+            <p class="text-xs text-slate-500">{% if cc and cc.address %}{{ cc.address }}{% else %}No contact details{% endif %}{% if cc and cc.opted_out_at %} · opted out {{ cc.opted_out_at|localtime('%d %b %Y') }} ({{ cc.opt_out_source }}){% endif %}</p>
+          </div>
+          {% if cc %}
+            {{ status_badge(cc.status, 'Allowed' if cc.is_allowed else 'Opted out') }}
+            {% if current_user.can(P.CLIENTS_EDIT) %}
+            <form method="post" action="{{ url_for('clients.set_channel_preference', client_id=client.id, channel=ch) }}" {% if cc.is_allowed %}data-confirm="Opt {{ client.first_name }} out of {{ ch|channel_label }}? Campaigns will skip this channel."{% endif %}>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="allowed" value="{{ '0' if cc.is_allowed else '1' }}">
+              <button class="text-xs font-medium text-brand-700 hover:text-brand-900">{{ 'Opt out' if cc.is_allowed else 'Opt in' }}</button>
+            </form>
+            {% endif %}
+          {% else %}
+            {{ badge('Unavailable', 'gray') }}
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <div class="space-y-6 xl:col-span-2">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Conversations</h2><p class="text-xs text-slate-500">Each channel keeps its own thread.</p></div>
+      <div class="grid gap-4 p-6 md:grid-cols-3">
+        {% for ch in channels %}
+        {% set conv = conversations.get(ch) %}
+        <div class="flex flex-col rounded-xl border border-slate-200 p-4">
+          <div class="flex items-center justify-between">{{ channel_badge(ch) }}{% if conv %}{{ status_badge(conv.status) }}{% endif %}</div>
+          {% if conv %}
+            <p class="mt-3 line-clamp-3 flex-1 text-sm text-slate-700">{{ conv.last_message_preview or 'No messages yet.' }}</p>
+            <p class="mt-2 text-xs text-slate-400">{{ conv.last_message_at|timeago }}{% if conv.unread_count %} · <span class="font-semibold text-sun-600">{{ conv.unread_count }} unread</span>{% endif %}</p>
+            {% if current_user.can(P.CONVERSATIONS_VIEW) %}<a href="{{ url_for('conversations.detail', conversation_id=conv.id) }}" class="btn-secondary btn-sm mt-3">Open conversation</a>{% endif %}
+          {% else %}
+            <p class="mt-3 flex-1 text-sm text-slate-400">No {{ ch|channel_label }} conversation yet.</p>
+            {% set cc = client.channel(ch) %}
+            {% if current_user.can(P.CONVERSATIONS_REPLY) and cc and cc.is_reachable %}
+              <form method="post" action="{{ url_for('conversations.start', client_id=client.id, channel=ch) }}" class="mt-3">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn-secondary btn-sm w-full">Start conversation</button>
+              </form>
+            {% endif %}
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Campaign history</h2></div>
+      <div class="overflow-x-auto">
+        <table class="table-base">
+          <thead><tr><th>Campaign</th><th>Channel</th><th>Sent to</th><th>Delivery</th><th>Date</th></tr></thead>
+          <tbody class="divide-y divide-slate-100">
+            {% for recipient, campaign in campaign_history %}
+            <tr>
+              <td class="font-medium text-slate-900">{% if current_user.can(P.CAMPAIGNS_VIEW) %}<a href="{{ url_for('campaigns.detail', campaign_id=campaign.id) }}" class="hover:text-brand-700">{{ campaign.name }}</a>{% else %}{{ campaign.name }}{% endif %}</td>
+              <td>{{ channel_badge(campaign.channel) }}</td>
+              <td class="font-mono text-xs">{{ recipient.address }}</td>
+              <td>{% if recipient.message %}{{ status_badge(recipient.message.status) }}{% else %}{{ status_badge(recipient.status) }}{% endif %}</td>
+              <td class="text-slate-500">{{ recipient.created_at|localtime('%d %b %Y') }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="py-10 text-center text-sm text-slate-500">This client hasn't received any campaigns yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if current_user.can(P.CLIENTS_CATEGORIZE) %}
+{% call modal('categories-modal', 'Categories for ' ~ client.first_name) %}
+  <form method="post" action="{{ url_for('clients.update_categories', client_id=client.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="grid max-h-80 gap-2 overflow-y-auto sm:grid-cols-2">
+      {% for cat in categories %}
+      <label class="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+        <input type="checkbox" name="category" value="{{ cat.id }}" class="form-checkbox" {{ 'checked' if cat in client.categories }}> {{ cat.name }}
+      </label>
+      {% endfor %}
+    </div>
+    <div class="mt-5 flex justify-end gap-3">
+      <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+      <button class="btn-primary">Save categories</button>
+    </div>
+  </form>
+{% endcall %}
+{% endif %}
+{% endblock %}

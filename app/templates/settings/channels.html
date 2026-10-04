@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% from "components/table.html" import page_header, data_table %}
+{% from "components/badge.html" import badge, status_badge, channel_badge %}
+{% from "components/icons.html" import channel_icon %}
+{% block title %}Channels{% endblock %}
+{% block content %}
+{{ page_header('Communication channels', 'Provider configuration is read from environment variables — credentials never reach the browser.') }}
+
+<div class="grid gap-4 lg:grid-cols-3">
+  {% for ch in channels %}
+  <div class="card p-6">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-700">{{ channel_icon(ch.key, 'h-5 w-5') }}</div>
+        <div>
+          <p class="font-semibold text-slate-900">{{ ch.label }}</p>
+          <p class="text-xs text-slate-500">Provider: <span class="font-mono">{{ ch.provider }}</span></p>
+        </div>
+      </div>
+      {{ badge('Ready', 'green') if ch.configured else badge('Not configured', 'red') }}
+    </div>
+    {% if ch.provider == 'console' %}
+      <p class="mt-4 rounded-lg bg-amber-50 p-3 text-xs text-amber-800">Development mode: messages are written to the server log instead of being sent.</p>
+    {% endif %}
+    <dl class="mt-4 space-y-2 text-xs">
+      <div><dt class="font-medium text-slate-500">Webhook URL</dt><dd class="mt-0.5 break-all font-mono text-slate-700">{{ ch.webhook }}</dd></div>
+      <div class="flex items-center justify-between"><dt class="font-medium text-slate-500">Webhook verification</dt><dd>{{ badge('Enabled', 'green') if ch.verification else badge('Secret missing', 'amber') }}</dd></div>
+    </dl>
+  </div>
+  {% endfor %}
+</div>
+
+<p class="mt-4 text-sm text-slate-500">Background processing: <span class="font-mono font-medium text-slate-700">{{ task_backend }}</span></p>
+
+<div class="card mt-8">
+  <div class="card-header"><h2 class="card-title">Recent webhook events</h2></div>
+  {% call data_table(['Received', 'Channel', 'Provider', 'Type', 'Status', 'Error'], empty=not events, empty_title='No webhook events yet') %}
+    {% for e in events %}
+    <tr>
+      <td class="text-slate-500">{{ e.received_at|localtime }}</td>
+      <td>{{ channel_badge(e.channel) }}</td>
+      <td class="font-mono text-xs">{{ e.provider }}</td>
+      <td>{{ e.event_type }}</td>
+      <td>{{ status_badge(e.status) }}</td>
+      <td class="max-w-xs truncate text-rose-600">{{ e.error_message or '' }}</td>
+    </tr>
+    {% endfor %}
+  {% endcall %}
+</div>
+{% endblock %}

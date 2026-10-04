@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block public_content %}
+<div class="flex min-h-full">
+  <div class="relative hidden flex-1 overflow-hidden bg-gradient-to-br from-brand-800 via-brand-900 to-brand-950 lg:block">
+    <div class="absolute -right-24 -top-24 h-96 w-96 rounded-full bg-sun-400/30 blur-3xl"></div>
+    <div class="absolute -bottom-32 -left-16 h-96 w-96 rounded-full bg-brand-400/20 blur-3xl"></div>
+    <div class="relative flex h-full flex-col justify-between p-12 text-white">
+      <div class="flex items-center gap-3">
+        <img src="{{ url_for('static', filename='images/logo-mark.svg') }}" alt="" class="h-12 w-12">
+        <div>
+          <p class="text-lg font-bold">Allied Tours &amp; Travel Agency</p>
+          <p class="text-sm text-sun-300">{{ APP_TAGLINE }}</p>
+        </div>
+      </div>
+      <div class="max-w-md">
+        <h2 class="text-4xl font-bold leading-tight">Every client conversation, in one command center.</h2>
+        <p class="mt-4 text-brand-100/80">Segment your travellers, launch SMS, WhatsApp and Email campaigns, and answer every reply from a single inbox.</p>
+        <div class="mt-10 grid grid-cols-3 gap-4 text-sm">
+          <div class="rounded-xl bg-white/10 p-4"><p class="text-2xl font-bold">SMS</p><p class="text-brand-100/70">Instant reach</p></div>
+          <div class="rounded-xl bg-white/10 p-4"><p class="text-2xl font-bold">WhatsApp</p><p class="text-brand-100/70">Rich chats</p></div>
+          <div class="rounded-xl bg-white/10 p-4"><p class="text-2xl font-bold">Email</p><p class="text-brand-100/70">Beautiful offers</p></div>
+        </div>
+      </div>
+      <p class="text-xs text-brand-200/60">&copy; {{ APP_NAME }}</p>
+    </div>
+  </div>
+  <div class="flex flex-1 items-center justify-center px-6 py-12 lg:max-w-xl">
+    <div class="w-full max-w-sm">
+      <div class="mb-8 flex items-center gap-3 lg:hidden">
+        <img src="{{ url_for('static', filename='images/logo-mark.svg') }}" alt="" class="h-10 w-10">
+        <p class="font-bold text-brand-900">Allied Tours &amp; Travel</p>
+      </div>
+      {% include "components/alert.html" %}
+      {% block auth_content %}{% endblock %}
+    </div>
+  </div>
+</div>
+{% endblock %}

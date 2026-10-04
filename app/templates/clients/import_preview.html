@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% from "components/table.html" import page_header %}
+{% from "components/stat_card.html" import stat_card %}
+{% from "components/badge.html" import badge %}
+{% from "components/icons.html" import icon %}
+{% block title %}Import preview{% endblock %}
+{% block content %}
+{{ page_header('Review your import', 'Nothing has been saved yet. Check the results, then confirm.') }}
+
+{% if summary.error %}
+  <div class="card p-6">
+    <p class="font-semibold text-rose-700">{{ summary.error }}</p>
+    <a href="{{ url_for('clients.import_upload') }}" class="btn-secondary mt-4">Upload a different file</a>
+  </div>
+{% else %}
+<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+  {{ stat_card('Total rows', summary.total, 'template', 'brand') }}
+  {{ stat_card('Ready to import', summary.valid, 'check', 'green') }}
+  {{ stat_card('Duplicates (skipped)', summary.duplicates, 'users', 'sun') }}
+  {{ stat_card('Invalid rows (skipped)', summary.invalid, 'x', 'red') }}
+</div>
+
+<div class="mt-6 grid gap-6 xl:grid-cols-3">
+  <div class="card xl:col-span-2">
+    <div class="card-header">
+      <h2 class="card-title">Preview <span class="text-sm font-normal text-slate-500">(first 100 rows)</span></h2>
+      {% if summary.duplicates or summary.invalid %}
+        <a href="{{ url_for('clients.import_errors', token=token) }}" class="btn-secondary btn-sm">{{ icon('download', 'h-4 w-4') }} Error report</a>
+      {% endif %}
+    </div>
+    <div class="max-h-[32rem] overflow-auto">
+      <table class="table-base">
+        <thead class="sticky top-0"><tr><th>Line</th><th>Result</th><th>Name</th><th>Phone</th><th>Email</th><th>Location</th><th>Issue</th></tr></thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for r in summary.rows[:100] %}
+          <tr class="{{ 'bg-rose-50/40' if r.result == 'invalid' else ('bg-amber-50/40' if r.result == 'duplicate') }}">
+            <td class="text-slate-400">{{ r.line }}</td>
+            <td>{{ badge('Ready', 'green') if r.result == 'valid' else (badge('Duplicate', 'amber') if r.result == 'duplicate' else badge('Invalid', 'red')) }}</td>
+            <td class="font-medium text-slate-900">{{ r.full_name }}</td>
+            <td class="font-mono text-xs">{{ r.phone }}</td>
+            <td>{{ r.email }}</td>
+            <td>{{ r.location }}</td>
+            <td class="whitespace-normal text-xs text-slate-500">{{ r.reason }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <form method="post" class="card self-start">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="card-header"><h2 class="card-title">Confirm import</h2></div>
+    <div class="card-body space-y-5">
+      <div>
+        <p class="form-label">Add every imported client to these categories</p>
+        <div class="max-h-48 space-y-1 overflow-y-auto">
+          {% for c in categories %}
+          <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="category" value="{{ c.id }}" class="form-checkbox"> {{ c.name }}</label>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <p class="form-label">And tag them with</p>
+        <div class="flex flex-wrap gap-2">
+          {% for t in tags %}
+          <label class="cursor-pointer"><input type="checkbox" name="tag" value="{{ t.id }}" class="peer sr-only"><span class="inline-flex rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 peer-checked:border-brand-600 peer-checked:bg-brand-600 peer-checked:text-white">#{{ t.name }}</span></label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="flex gap-3 border-t border-slate-100 px-6 py-4">
+      <a href="{{ url_for('clients.import_upload') }}" class="btn-secondary flex-1">Start over</a>
+      <button class="btn-primary flex-1" {{ 'disabled' if not summary.valid }} data-confirm="Import {{ summary.valid }} new client(s)?">Import {{ summary.valid|number }}</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

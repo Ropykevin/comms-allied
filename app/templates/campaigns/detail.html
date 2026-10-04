@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% from "components/badge.html" import status_badge, channel_badge, category_chip, tag_chip %}
+{% from "components/stat_card.html" import metric %}
+{% from "components/pagination.html" import pagination %}
+{% from "components/icons.html" import icon %}
+{% block title %}{{ campaign.name }}{% endblock %}
+{% block content %}
+<div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+  <div>
+    <a href="{{ url_for('campaigns.index') }}" class="text-sm font-medium text-brand-700 hover:text-brand-900">← Campaigns</a>
+    <div class="mt-2 flex flex-wrap items-center gap-3">
+      <h1 class="page-title">{{ campaign.name }}</h1>
+      <span id="campaign-status">{{ status_badge(campaign.status) }}</span>
+      {% if campaign.channel %}{{ channel_badge(campaign.channel) }}{% endif %}
+    </div>
+    <p class="page-subtitle">
+      {% if campaign.status == 'scheduled' %}Scheduled for {{ campaign.scheduled_at|localtime('%A %d %B %Y, %H:%M') }} ({{ campaign.timezone }})
+      {% elif campaign.queued_at %}Sent {{ campaign.queued_at|localtime }}{% if campaign.sent_by %} by {{ campaign.sent_by.full_name }}{% endif %}
+      {% else %}Created {{ campaign.created_at|localtime }}{% if campaign.created_by %} by {{ campaign.created_by.full_name }}{% endif %}{% endif %}
+    </p>
+    {% if campaign.description %}<p class="mt-2 max-w-2xl text-sm text-slate-600">{{ campaign.description }}</p>{% endif %}
+  </div>
+  <div class="flex flex-wrap gap-2">
+    {% if campaign.is_editable and current_user.can(P.CAMPAIGNS_MANAGE) %}
+      <a href="{{ url_for('campaigns.edit', campaign_id=campaign.id) }}" class="btn-secondary">{{ icon('pencil', 'h-4 w-4') }} Edit</a>
+    {% endif %}
+    {% if campaign.status == 'draft' and current_user.can(P.CAMPAIGNS_SEND) %}
+      <form method="post" action="{{ url_for('campaigns.send_now', campaign_id=campaign.id) }}" data-confirm="Send “{{ campaign.name }}” now? Messages cannot be recalled once sent.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-accent">{{ icon('send', 'h-4 w-4') }} Send now</button>
+      </form>
+    {% endif %}
+    {% if campaign.status in ['scheduled', 'queued', 'sending'] and current_user.can(P.CAMPAIGNS_SEND) %}
+      <form method="post" action="{{ url_for('campaigns.cancel', campaign_id=campaign.id) }}" data-confirm="{{ 'Unschedule this campaign and return it to drafts?' if campaign.status == 'scheduled' else 'Stop sending? Messages already sent cannot be recalled.' }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-secondary text-rose-600">{{ 'Unschedule' if campaign.status == 'scheduled' else 'Stop sending' }}</button>
+      </form>
+    {% endif %}
+    {% if stats.failed and campaign.status in ['completed', 'failed'] and current_user.can(P.CAMPAIGNS_SEND) %}
+      <form method="post" action="{{ url_for('campaigns.retry_failed', campaign_id=campaign.id) }}" data-confirm="Retry {{ stats.failed }} failed message(s)?">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-secondary">{{ icon('refresh', 'h-4 w-4') }} Retry failed</button>
+      </form>
+    {% endif %}
+    {% if current_user.can(P.CAMPAIGNS_MANAGE) %}
+      <form method="post" action="{{ url_for('campaigns.duplicate', campaign_id=campaign.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-secondary">Duplicate</button>
+      </form>
+      {% if campaign.status == 'draft' %}
+      <form method="post" action="{{ url_for('campaigns.delete', campaign_id=campaign.id) }}" data-confirm="Delete this draft?">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-ghost text-rose-600">Delete</button>
+      </form>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+
+{% if campaign.is_editable %}
+  {% set est = audience_estimate.channels[campaign.channel] if campaign.channel and audience_estimate else None %}
+  <div class="mb-6 rounded-2xl border border-brand-100 bg-brand-50/60 p-5 text-sm text-brand-900">
+    {% if est %}
+      <p><span class="text-lg font-bold">{{ est.available|number }}</span> clients can currently receive this {{ campaign.channel_label }} campaign.
+      {% if est.excluded %}<span class="text-brand-700">{{ est.excluded|number }} will be excluded ({{ est.missing_contact }} missing contact details, {{ est.opted_out }} opted out).</span>{% endif %}</p>
+      <p class="mt-1 text-xs text-brand-700">The final list is calculated at the moment of sending, so newly categorised clients are included.</p>
+    {% else %}
+      <p>{{ audience_estimate.total|number if audience_estimate else 0 }} clients match this audience. Choose a channel to see how many can be reached.</p>
+    {% endif %}
+  </div>
+{% else %}
+<div class="grid gap-4 sm:grid-cols-3 xl:grid-cols-6" id="campaign-stats" data-stats-url="{{ url_for('campaigns.stats_json', campaign_id=campaign.id) }}" data-live="{{ '1' if campaign.status in ['queued', 'sending'] else '0' }}">
+  {% set cards = [('recipients', 'Recipients', 'text-slate-900', 'bg-white'), ('sent', 'Sent', 'text-brand-900', 'bg-brand-50'), ('delivered', 'Delivered', 'text-emerald-900', 'bg-emerald-50'), ('read', 'Opened' if campaign.channel == 'email' else 'Read', 'text-violet-900', 'bg-violet-50'), ('failed', 'Bounced / failed' if campaign.channel == 'email' else 'Failed', 'text-rose-900', 'bg-rose-50'), ('replies', 'Replies', 'text-sun-700', 'bg-sun-50')] %}
+  {% for key, label, tone, bg in cards %}
+  <div class="card {{ bg }} p-5">
+    <p class="text-xs font-medium uppercase tracking-wide text-slate-500">{{ label }}</p>
+    <p class="mt-1 text-3xl font-bold {{ tone }}" data-stat="{{ key }}">{{ stats[key]|number }}</p>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="mt-6 grid gap-6 xl:grid-cols-3">
+  <div class="card xl:col-span-2">
+    <div class="card-header"><h2 class="card-title">Delivery funnel</h2>
+      {% if stats.pending %}<span class="text-xs text-amber-600" data-stat-text="pending">{{ stats.pending|number }} still sending…</span>{% endif %}
+    </div>
+    <div class="card-body space-y-5">
+      {{ metric('Sent', stats.sent, stats.recipients or stats.total, 'bg-brand-600') }}
+      {{ metric('Delivered', stats.delivered, stats.recipients or stats.total, 'bg-emerald-500') }}
+      {% if campaign.channel in ['whatsapp', 'email'] %}{{ metric('Opened' if campaign.channel == 'email' else 'Read', stats.read, stats.recipients or stats.total, 'bg-violet-500') }}{% endif %}
+      {{ metric('Clients who replied', stats.repliers, stats.recipients or stats.total, 'bg-sun-500') }}
+      {{ metric('Failed', stats.failed, stats.recipients or stats.total, 'bg-rose-500') }}
+      {% if campaign.channel == 'email' and stats.bounced %}<p class="text-xs text-slate-500">{{ stats.bounced }} of the failures were bounces.</p>{% endif %}
+      {% if stats.skipped %}<p class="text-xs text-slate-500">{{ stats.skipped }} recipient(s) skipped because they opted out or were archived before sending.</p>{% endif %}
+      {% if campaign.excluded_count %}<p class="text-xs text-slate-500">{{ campaign.excluded_count }} client(s) in the audience were excluded at send time (no {{ campaign.channel_label }} contact or opted out).</p>{% endif %}
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">Audience</h2></div>
+    <div class="card-body space-y-3 text-sm">
+      {% if categories %}<div class="flex flex-wrap gap-1.5">{% for c in categories.values() %}{{ category_chip(c) }}{% endfor %}</div>{% else %}<p class="text-slate-600">All clients</p>{% endif %}
+      {% if tags %}<div class="flex flex-wrap gap-1.5">{% for t in tags.values() %}{{ tag_chip(t) }}{% endfor %}</div>{% endif %}
+      {% if audience.statuses %}<p class="text-slate-600">Status: {{ audience.statuses|map('title')|join(', ') }}</p>{% endif %}
+      {% if audience.location %}<p class="text-slate-600">Location contains “{{ audience.location }}”</p>{% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="mt-6 grid gap-6 xl:grid-cols-3">
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">Message</h2><span class="text-xs text-slate-500">as {{ sample.full_name }}</span></div>
+    <div class="card-body space-y-3">
+      {% if campaign.channel == 'email' %}<p class="text-sm"><span class="text-slate-500">Subject:</span> <span class="font-semibold">{{ preview_subject or '—' }}</span></p>{% endif %}
+      {% if campaign.is_html %}
+        <p class="text-xs text-slate-500">HTML email — rendered in the Allied email design when sent.</p>
+        <pre class="max-h-80 overflow-auto whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-xs text-slate-700">{{ preview_content }}</pre>
+      {% else %}
+        <div class="rounded-2xl bg-[#e5ddd5] p-4"><div class="whitespace-pre-wrap break-words rounded-2xl bg-white px-4 py-3 text-sm text-slate-800 shadow-sm">{{ preview_content or 'No message written yet.' }}</div></div>
+      {% endif %}
+      {% if campaign.attachment_name %}<p class="text-sm text-slate-600">📎 {{ campaign.attachment_name }}</p>{% endif %}
+      {% if campaign.template %}<p class="text-xs text-slate-500">Based on template “{{ campaign.template.name }}”</p>{% endif %}
+    </div>
+  </div>
+
+  <div class="card xl:col-span-2">
+    <div class="card-header">
+      <h2 class="card-title">Recipients</h2>
+      <form method="get" class="flex items-center gap-2">
+        <select name="delivery" class="form-input w-auto py-1.5 text-xs" data-autosubmit aria-label="Filter by delivery status">
+          <option value="">All</option>
+          {% for s in ['queued', 'sent', 'delivered', 'read', 'failed', 'skipped'] %}<option value="{{ s }}" {{ 'selected' if recipient_status == s }}>{{ s|title }}</option>{% endfor %}
+        </select>
+      </form>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="table-base">
+        <thead><tr><th>Client</th><th>Address</th><th>Status</th><th>Updated</th><th>Detail</th></tr></thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for r in recipients.items %}
+          <tr>
+            <td>{% if r.client %}<a href="{{ url_for('clients.detail', client_id=r.client_id) }}" class="font-medium text-slate-900 hover:text-brand-700">{{ r.client.full_name }}</a>{% else %}—{% endif %}</td>
+            <td class="font-mono text-xs">{{ r.address }}</td>
+            <td>{% if r.message %}{{ status_badge(r.message.status) }}{% else %}{{ status_badge(r.status) }}{% endif %}</td>
+            <td class="text-slate-500">{% set m = r.message %}{{ (m.read_at or m.delivered_at or m.sent_at or m.failed_at or r.processed_at)|timeago if m else (r.processed_at|timeago if r.processed_at else 'Waiting') }}</td>
+            <td class="max-w-xs truncate text-xs text-rose-600">{{ (r.message.error_message if r.message else r.error_message) or '' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="py-10 text-center text-sm text-slate-500">{{ 'Recipients are calculated when the campaign is sent.' if campaign.is_editable else 'No recipients match this filter.' }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {{ pagination(recipients, 'campaigns.detail', {'campaign_id': campaign.id, 'delivery': recipient_status}) }}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/campaign_detail.js') }}" defer></script>{% endblock %}

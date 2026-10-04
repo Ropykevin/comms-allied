@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% from "components/table.html" import page_header, field %}
+{% block title %}Profile{% endblock %}
+{% block content %}
+{{ page_header('Your profile', 'Manage your personal details and password.') }}
+<div class="grid gap-6 lg:grid-cols-2">
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">Personal details</h2></div>
+    <form method="post" action="{{ url_for('auth.profile') }}" class="card-body space-y-5">
+      {{ form.hidden_tag() }}
+      <div>
+        <p class="form-label">Email</p>
+        <p class="text-sm text-slate-900">{{ current_user.email }}</p>
+      </div>
+      <div>
+        <p class="form-label">Role</p>
+        <p class="text-sm text-slate-900">{{ current_user.role.label }}</p>
+        <p class="form-help">{{ current_user.role.description }}</p>
+      </div>
+      {{ field(form.full_name) }}
+      {{ field(form.phone) }}
+      <button class="btn-primary">Save profile</button>
+    </form>
+  </div>
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">Change password</h2></div>
+    <form method="post" action="{{ url_for('auth.change_password') }}" class="card-body space-y-5">
+      {{ password_form.hidden_tag() }}
+      {{ field(password_form.current_password, autocomplete='current-password') }}
+      {{ field(password_form.password, autocomplete='new-password', help='At least 10 characters, mixing letters with numbers or symbols.') }}
+      {{ field(password_form.confirm, autocomplete='new-password') }}
+      <button class="btn-primary">Update password</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

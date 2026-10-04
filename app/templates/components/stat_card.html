@@ -1,0 +1,38 @@
+{% from "components/icons.html" import icon %}
+{% set TONES = {
+  'brand': 'bg-brand-50 text-brand-700',
+  'sun': 'bg-sun-50 text-sun-600',
+  'green': 'bg-emerald-50 text-emerald-600',
+  'red': 'bg-rose-50 text-rose-600',
+  'violet': 'bg-violet-50 text-violet-600',
+  'sky': 'bg-sky-50 text-sky-600',
+  'gray': 'bg-slate-100 text-slate-600',
+} %}
+
+{% macro stat_card(label, value, icon_name='chart', tone='brand', hint=None, href=None) -%}
+{% set tag = 'a' if href else 'div' %}
+<{{ tag }} {% if href %}href="{{ href }}"{% endif %} class="card group flex items-center gap-4 p-5 {{ 'transition hover:-translate-y-0.5 hover:shadow-lg' if href }}">
+  <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl {{ TONES.get(tone, TONES['brand']) }}">
+    {{ icon(icon_name, 'h-6 w-6') }}
+  </div>
+  <div class="min-w-0">
+    <p class="truncate text-sm font-medium text-slate-500">{{ label }}</p>
+    <p class="text-2xl font-bold tracking-tight text-slate-900">{{ value|number }}</p>
+    {% if hint %}<p class="truncate text-xs text-slate-400">{{ hint }}</p>{% endif %}
+  </div>
+</{{ tag }}>
+{%- endmacro %}
+
+{% macro metric(label, value, total=None, color='bg-brand-600') -%}
+<div>
+  <div class="flex items-baseline justify-between">
+    <p class="text-sm font-medium text-slate-600">{{ label }}</p>
+    <p class="text-sm font-semibold text-slate-900">{{ value|number }}{% if total is not none %} <span class="text-xs font-normal text-slate-400">({{ value|percent(total) }}%)</span>{% endif %}</p>
+  </div>
+  {% if total is not none %}
+  <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+    <div class="h-full rounded-full {{ color }}" style="width: {{ value|percent(total) }}%"></div>
+  </div>
+  {% endif %}
+</div>
+{%- endmacro %}

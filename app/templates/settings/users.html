@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "components/table.html" import page_header, data_table %}
+{% from "components/badge.html" import badge %}
+{% from "components/icons.html" import icon %}
+{% block title %}Team & Roles{% endblock %}
+{% block content %}
+{% call page_header('Team & Roles', 'Who can access the platform and what they can do.') %}
+  <a href="{{ url_for('settings.user_create') }}" class="btn-primary">{{ icon('plus', 'h-4 w-4') }} Add team member</a>
+{% endcall %}
+
+<div class="card">
+  {% call data_table(['Name', 'Email', 'Role', 'Status', 'Last sign-in', 'Actions']) %}
+    {% for u in users %}
+    <tr>
+      <td>
+        <div class="flex items-center gap-3">
+          <span class="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700">{{ u.initials }}</span>
+          <span class="font-medium text-slate-900">{{ u.full_name }}</span>
+        </div>
+      </td>
+      <td class="text-slate-500">{{ u.email }}</td>
+      <td>{{ badge(u.role.label, 'blue') }}</td>
+      <td>{{ badge('Active', 'green') if u.is_active else badge('Deactivated', 'gray') }}</td>
+      <td class="text-slate-500">{{ u.last_login_at|timeago }}</td>
+      <td class="text-right"><a href="{{ url_for('settings.user_edit', user_id=u.id) }}" class="btn-ghost btn-sm">{{ icon('pencil', 'h-4 w-4') }} Edit</a></td>
+    </tr>
+    {% endfor %}
+  {% endcall %}
+</div>
+
+<h2 class="mb-3 mt-10 text-sm font-semibold uppercase tracking-wider text-slate-500">Role permissions</h2>
+<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+  {% for role in roles %}
+  <div class="card p-5">
+    <p class="font-semibold text-slate-900">{{ role.label }}</p>
+    <p class="mt-1 text-sm text-slate-500">{{ role.description }}</p>
+    <div class="mt-4 flex flex-wrap gap-1.5">
+      {% for perm in role_permissions.get(role.name, [])|sort %}
+        <span class="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">{{ perm }}</span>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

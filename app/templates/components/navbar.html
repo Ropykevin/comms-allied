@@ -1,0 +1,36 @@
+{% from "components/icons.html" import icon %}
+<header class="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-slate-200/70 bg-white/80 px-4 backdrop-blur sm:px-6 lg:px-10">
+  <button type="button" class="btn-ghost -ml-2 p-2 lg:hidden" data-sidebar-open aria-label="Open navigation">
+    {{ icon('menu', 'h-6 w-6') }}
+  </button>
+
+  {% if current_user.can(P.CLIENTS_VIEW) %}
+  <form action="{{ url_for('clients.index') }}" method="get" class="relative hidden max-w-md flex-1 sm:block">
+    <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400">{{ icon('search', 'h-4 w-4') }}</span>
+    <input type="search" name="q" placeholder="Search clients by name, phone, email or company…" class="form-input pl-9" value="{{ request.args.get('q', '') if request.endpoint == 'clients.index' else '' }}">
+  </form>
+  {% endif %}
+
+  <div class="ml-auto flex items-center gap-2">
+    {% if current_user.can(P.CAMPAIGNS_MANAGE) %}
+      <a href="{{ url_for('campaigns.create') }}" class="btn-accent hidden sm:inline-flex">{{ icon('plus', 'h-4 w-4') }} New campaign</a>
+    {% endif %}
+    <div class="relative" data-dropdown>
+      <button type="button" class="flex items-center gap-2 rounded-full p-1 pr-3 hover:bg-slate-100" data-dropdown-toggle aria-haspopup="true">
+        <span class="flex h-8 w-8 items-center justify-center rounded-full bg-brand-700 text-xs font-bold text-white">{{ current_user.initials }}</span>
+        <span class="hidden text-sm font-medium text-slate-700 md:inline">{{ current_user.first_name }}</span>
+      </button>
+      <div class="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-1 shadow-lg" data-dropdown-menu hidden>
+        <div class="px-3 py-2">
+          <p class="text-sm font-semibold text-slate-900">{{ current_user.full_name }}</p>
+          <p class="truncate text-xs text-slate-500">{{ current_user.email }}</p>
+        </div>
+        <a href="{{ url_for('auth.profile') }}" class="block rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">Profile &amp; password</a>
+        <form action="{{ url_for('auth.logout') }}" method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50">{{ icon('logout', 'h-4 w-4') }} Sign out</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</header>

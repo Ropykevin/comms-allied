@@ -1,0 +1,7 @@
+{% extends "email/_layout.html" %}
+{% block body %}{{ body_html }}{% endblock %}
+{% block footer %}
+Allied Tours &amp; Travel Agency · Your one-stop travel shop.<br>
+{% if unsubscribe_url %}You received this email because you are a valued client. <a href="{{ unsubscribe_url }}" style="color:#64748b;">Unsubscribe from emails</a>.{% endif %}
+{% endblock %}
+{% block tracking %}{% if tracking_url %}<img src="{{ tracking_url }}" width="1" height="1" alt="" style="display:block;border:0;">{% endif %}{% endblock %}

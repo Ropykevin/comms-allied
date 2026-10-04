@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "components/table.html" import page_header %}
+{% from "components/stat_card.html" import stat_card %}
+{% from "components/icons.html" import icon %}
+{% block title %}Import complete{% endblock %}
+{% block content %}
+{{ page_header('Import complete', 'Your clients are ready to be targeted by campaigns.') }}
+<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+  {{ stat_card('Total rows', summary.total, 'template', 'brand') }}
+  {{ stat_card('Imported', summary.imported, 'check', 'green') }}
+  {{ stat_card('Duplicates', summary.duplicates, 'users', 'sun') }}
+  {{ stat_card('Invalid rows', summary.invalid, 'x', 'red') }}
+</div>
+<div class="mt-8 flex flex-wrap gap-3">
+  <a href="{{ url_for('clients.index', sort='newest') }}" class="btn-primary">View clients</a>
+  {% if summary.duplicates or summary.invalid %}
+    <a href="{{ url_for('clients.import_errors', token=token) }}" class="btn-secondary">{{ icon('download', 'h-4 w-4') }} Download error report</a>
+  {% endif %}
+  <a href="{{ url_for('clients.import_upload') }}" class="btn-secondary">Import another file</a>
+</div>
+{% endblock %}

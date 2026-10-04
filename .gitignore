@@ -1,0 +1,23 @@
+# Secrets
+.env
+.env.*
+!.env.example
+deploy/nginx/certs/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+
+# Runtime data
+instance/
+backups/
+celerybeat-schedule*
+*.log
